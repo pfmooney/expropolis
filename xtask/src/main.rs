@@ -9,7 +9,6 @@ mod external;
 mod task_clippy;
 mod task_fmt;
 mod task_license;
-mod task_phd;
 mod task_prepush;
 mod task_style;
 mod util;
@@ -46,11 +45,6 @@ enum Cmds {
         #[arg(short, long)]
         quiet: bool,
     },
-    /// Run the PHD test suite
-    Phd {
-        #[clap(subcommand)]
-        cmd: task_phd::Cmd,
-    },
     /// Perform misc style checks
     Style,
 }
@@ -69,7 +63,6 @@ fn main() -> Result<()> {
         }
         Cmds::Openapi(external) => external
             .exec_bin("propolis-dropshot-apis", "propolis-dropshot-apis"),
-        Cmds::Phd { cmd } => cmd.run(),
         Cmds::Prepush { quiet } => {
             task_prepush::cmd_prepush(quiet)?;
 

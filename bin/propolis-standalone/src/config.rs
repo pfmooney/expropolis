@@ -177,7 +177,7 @@ pub fn block_backend(
         skip_flush: be.block_opts.skip_flush,
     };
 
-    let be = match &be.bdtype as &str {
+    let be: Arc<dyn block::Backend> = match &be.bdtype as &str {
         "file" => {
             let parsed: FileConfig = opt_deser(&be.options).unwrap();
 
@@ -215,8 +215,6 @@ pub fn block_backend(
             };
             block::FileBackend::create(&parsed.path, opts, workers).unwrap()
         }
-        "crucible" => create_crucible_backend(be, opts, log),
-        "crucible-mem" => create_crucible_mem_backend(be, opts, log),
         "mem-async" => {
             let parsed: MemAsyncConfig = opt_deser(&be.options).unwrap();
 
@@ -290,142 +288,4 @@ pub fn parse_cpuid(config: &Config) -> anyhow::Result<Option<CpuidSet>> {
     } else {
         Ok(None)
     }
-}
-
-#[cfg(feature = "crucible")]
-fn create_crucible_backend(
-    be: &BlockDevice,
-    opts: block::BackendOpts,
-    log: &slog::Logger,
-) -> Arc<dyn block::Backend> {
-    use slog::info;
-    use std::net::SocketAddr;
-    use uuid::Uuid;
-
-    info!(
-        log,
-        "Building a crucible VolumeConstructionRequest from options {:?}",
-        be.options
-    );
-
-    // No defaults on here because we really shouldn't try and guess
-    // what block size the downstairs is using. A lot of things
-    // default to 512, but it's best not to assume it'll always be
-    // that way.
-    let block_size =
-        u64::from(opts.block_size.expect("block_size is provided"));
-    let read_only = opts.read_only.unwrap_or(false);
-
-    #[derive(Deserialize)]
-    struct CrucibleConfig {
-        blocks_per_extent: u64,
-        extent_count: u32,
-        upstairs_id: Option<String>,
-        targets: [String; 3],
-
-        // This needs to increase monotonically with each successive connection
-        // to the downstairs. As a hack, you can set it to the current system
-        // time, and this will usually give us a newer generation than the last
-        // connection. NEVER do this in prod EVER.
-        generation: u64,
-
-        lossy: Option<bool>,
-        flush_timeout: Option<f32>,
-        encryption_key: Option<String>,
-        cert_pem: Option<String>,
-        key_pem: Option<String>,
-        root_cert_pem: Option<String>,
-        control_addr: Option<String>,
-    }
-    let parsed: CrucibleConfig = opt_deser(&be.options).unwrap();
-
-    // Parse a UUID, or generate a random one if none is specified.
-    // Reasonable in something primarily used for testing like
-    // propolis-standalone, but you wouldn't want to do this in
-    // prod.
-    let upstairs_id = if let Some(val) = parsed.upstairs_id {
-        Uuid::parse_str(&val).expect("upstairs_id is valid uuid")
-    } else {
-        Uuid::new_v4()
-    };
-
-    let target = parsed
-        .targets
-        .iter()
-        .map(|val| val.parse::<SocketAddr>())
-        .collect::<Result<Vec<_>, _>>()
-        .expect("targets contains valid socket addresses");
-
-    let control = parsed.control_addr.map(|val| {
-        val.parse::<SocketAddr>().expect("control_addr is valid socket addr")
-    });
-
-    let req = crucible_client_types::VolumeConstructionRequest::Region {
-        block_size,
-        blocks_per_extent: parsed.blocks_per_extent,
-        extent_count: parsed.extent_count,
-        opts: crucible_client_types::CrucibleOpts {
-            id: upstairs_id,
-            target,
-            lossy: parsed.lossy.unwrap_or(false),
-            flush_timeout: parsed.flush_timeout,
-            key: parsed.encryption_key,
-            cert_pem: parsed.cert_pem,
-            key_pem: parsed.key_pem,
-            root_cert_pem: parsed.root_cert_pem,
-            control,
-            read_only,
-        },
-        gen: parsed.generation,
-    };
-    info!(log, "Creating Crucible disk from request {:?}", req);
-    // QUESTION: is producer_registry: None correct here?
-    tokio::runtime::Handle::current().block_on(async move {
-        block::CrucibleBackend::create(req, opts, None, None, log.clone())
-            .await
-            .unwrap()
-    })
-}
-
-#[cfg(feature = "crucible")]
-fn create_crucible_mem_backend(
-    be: &BlockDevice,
-    opts: block::BackendOpts,
-    log: &slog::Logger,
-) -> Arc<dyn block::Backend> {
-    #[derive(Deserialize)]
-    struct CrucibleMemConfig {
-        size: u64,
-    }
-    let parsed: CrucibleMemConfig = opt_deser(&be.options).unwrap();
-
-    tokio::runtime::Handle::current().block_on(async move {
-        block::CrucibleBackend::create_mem(parsed.size, opts, log.clone())
-            .await
-            .unwrap()
-    })
-}
-
-#[cfg(not(feature = "crucible"))]
-fn create_crucible_backend(
-    _be: &BlockDevice,
-    _opts: block::BackendOpts,
-    _log: &slog::Logger,
-) -> Arc<dyn block::Backend> {
-    panic!(
-        "Rebuild propolis-standalone with 'crucible' feature enabled in \
-           order to use the crucible block backend"
-    );
-}
-
-#[cfg(not(feature = "crucible"))]
-fn create_crucible_mem_backend(
-    _be: &BlockDevice,
-    _opts: block::BackendOpts,
-    _log: &slog::Logger,
-) -> Arc<dyn block::Backend> {
-    panic!(
-        "Rebuild propolis-standalone with 'crucible' feature enabled in \
-           order to use the crucible-mem block backend"
-    );
 }

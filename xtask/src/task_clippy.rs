@@ -39,30 +39,6 @@ pub(crate) fn cmd_clippy(strict: bool, quiet: bool) -> Result<()> {
     // Everything in the workspace (including tests, etc)
     failed |= run_clippy(&["--workspace", "--all-targets"])?;
 
-    // Check the server as it is built for production
-    failed |=
-        run_clippy(&["-p", "propolis-server", "--features", "omicron-build"])?;
-
-    // Check the Falcon bits
-    failed |= run_clippy(&[
-        "--features",
-        "falcon",
-        "-p",
-        "propolis-server",
-        "-p",
-        "propolis-client",
-    ])?;
-
-    // Check the mock server
-    failed |= run_clippy(&["-p", "propolis-mock-server"])?;
-
-    // Check standalone with crucible enabled
-    failed |=
-        run_clippy(&["-p", "propolis-standalone", "--features", "crucible"])?;
-
-    // Check PHD bits
-    failed |= run_clippy(&["-p", "phd-runner"])?;
-
     if failed {
         bail!("Clippy failure(s) detected")
     }

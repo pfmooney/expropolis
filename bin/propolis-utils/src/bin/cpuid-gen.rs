@@ -38,11 +38,6 @@ fn print_toml(results: &CpuidSet) {
     }
 }
 
-fn print_json(results: CpuidSet) {
-    let cpuid = results.into_instance_spec_cpuid();
-    println!("{}", serde_json::to_string_pretty(&cpuid).unwrap());
-}
-
 #[derive(Default, Clone, Copy, Debug, ValueEnum)]
 enum OutputFormat {
     /// Print a human-readable plain-text representation.
@@ -51,9 +46,6 @@ enum OutputFormat {
 
     /// Print TOML suitable for use in a propolis-standalone config file.
     Toml,
-
-    /// Print JSON suitable for inclusion in a propolis-server instance spec.
-    Json,
 }
 
 impl FromStr for OutputFormat {
@@ -63,7 +55,6 @@ impl FromStr for OutputFormat {
         Ok(match s {
             "text" => Self::Text,
             "toml" => Self::Toml,
-            "json" => Self::Json,
             _ => {
                 return Err(
                     "invalid output format, must be text, toml, or json",
@@ -105,7 +96,6 @@ fn main() -> anyhow::Result<()> {
     match opts.format {
         OutputFormat::Text => print_text(&results),
         OutputFormat::Toml => print_toml(&results),
-        OutputFormat::Json => print_json(results),
     }
 
     Ok(())

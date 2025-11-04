@@ -15,11 +15,6 @@ mod file;
 pub use file::FileBackend;
 use tracking::CompletionCallback;
 
-#[cfg(feature = "crucible")]
-mod crucible;
-#[cfg(feature = "crucible")]
-pub use self::crucible::CrucibleBackend;
-
 mod in_memory;
 pub use in_memory::InMemoryBackend;
 

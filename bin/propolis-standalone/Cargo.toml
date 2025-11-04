@@ -27,7 +27,6 @@ serde = { workspace = true, features = ["derive"] }
 oxide-tokio-rt.workspace = true
 propolis.workspace = true
 propolis_types.workspace = true
-crucible-client-types = { workspace = true, optional = true }
 cpuid_profile_config.workspace = true
 erased-serde.workspace = true
 serde_json.workspace = true
@@ -42,4 +41,3 @@ uuid.workspace = true
 
 [features]
 default = []
-crucible = ["propolis/crucible-full", "propolis/oximeter", "crucible-client-types"]
