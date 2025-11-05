@@ -46,8 +46,6 @@ jobs:
     - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
     - name: Build
       run: cargo build --verbose
-    - name: Build mock-only server
-      run: cargo build -p propolis-mock-server --verbose
     - name: Test Libraries
       run: cargo test --lib --verbose
 
