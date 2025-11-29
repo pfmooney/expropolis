@@ -4,8 +4,10 @@
 
 //! Support for PCI bridges.
 
+use crate::prelude::*;
+
 use std::num::NonZeroU8;
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Weak};
 
 use super::bus::Attachment;
 use super::cfgspace::{CfgBuilder, CfgReg};
@@ -155,7 +157,7 @@ impl Bridge {
                 StdCfgReg::HeaderType => ro.write_u8(HEADER_TYPE_BRIDGE),
                 StdCfgReg::Reserved => ro.fill(0),
                 StdCfgReg::Command => {
-                    let guard = self.inner.lock().unwrap();
+                    let guard = self.inner.lock();
                     ro.write_u16(guard.reg_command.bits());
                 }
 
@@ -193,26 +195,26 @@ impl Bridge {
                 }
             },
             BridgeReg::PrimaryBus => {
-                let guard = self.inner.lock().unwrap();
+                let guard = self.inner.lock();
                 ro.write_u8(guard.primary_bus.get());
             }
             BridgeReg::SecondaryBus => {
-                let guard = self.inner.lock().unwrap();
+                let guard = self.inner.lock();
                 ro.write_u8(guard.secondary_bus.get());
             }
             BridgeReg::SubordinateBus => {
-                let guard = self.inner.lock().unwrap();
+                let guard = self.inner.lock();
                 ro.write_u8(guard.subordinate_bus.get());
             }
             BridgeReg::SecondaryLatencyTimer => ro.write_u8(0),
             BridgeReg::IoBase | BridgeReg::IoLimit => ro.write_u8(0),
             BridgeReg::SecondaryStatus => ro.write_u16(BRIDGE_SECONDARY_STATUS),
             BridgeReg::MemoryBase => {
-                let guard = self.inner.lock().unwrap();
+                let guard = self.inner.lock();
                 ro.write_u16(guard.memory_base & BRIDGE_MEMORY_REG_MASK);
             }
             BridgeReg::MemoryLimit => {
-                let guard = self.inner.lock().unwrap();
+                let guard = self.inner.lock();
                 ro.write_u16(guard.memory_limit & BRIDGE_MEMORY_REG_MASK);
             }
             BridgeReg::PrefetchableMemoryBase
@@ -245,7 +247,7 @@ impl Bridge {
 
                 StdCfgReg::Command => {
                     let new = RegCmd::from_bits_truncate(wo.read_u16());
-                    let mut guard = self.inner.lock().unwrap();
+                    let mut guard = self.inner.lock();
                     guard.reg_command = new;
                 }
 
@@ -277,23 +279,23 @@ impl Bridge {
 
             // Writable bridge registers.
             BridgeReg::PrimaryBus => {
-                let mut guard = self.inner.lock().unwrap();
+                let mut guard = self.inner.lock();
                 guard.primary_bus = BusNum::new(wo.read_u8())
             }
             BridgeReg::SecondaryBus => {
-                let mut guard = self.inner.lock().unwrap();
+                let mut guard = self.inner.lock();
                 guard.set_secondary_bus(BusNum::new(wo.read_u8()))
             }
             BridgeReg::SubordinateBus => {
-                let mut guard = self.inner.lock().unwrap();
+                let mut guard = self.inner.lock();
                 guard.subordinate_bus = BusNum::new(wo.read_u8())
             }
             BridgeReg::MemoryBase => {
-                let mut guard = self.inner.lock().unwrap();
+                let mut guard = self.inner.lock();
                 guard.memory_base = wo.read_u16();
             }
             BridgeReg::MemoryLimit => {
-                let mut guard = self.inner.lock().unwrap();
+                let mut guard = self.inner.lock();
                 guard.memory_limit = wo.read_u16();
             }
 
@@ -313,7 +315,7 @@ impl Bridge {
 
 impl Endpoint for Bridge {
     fn attach(&self, attachment: Attachment) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         let _old = inner.attachment.replace(attachment);
         assert!(_old.is_none());
     }
@@ -345,7 +347,7 @@ impl Lifecycle for Bridge {
         "pci-bridge"
     }
     fn reset(&self) {
-        self.inner.lock().unwrap().reset();
+        self.inner.lock().reset();
     }
     fn migrate(&self) -> Migrator<'_> {
         // TODO Should be migratable in theory: copy all the register state,

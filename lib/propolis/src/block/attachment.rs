@@ -15,13 +15,15 @@
 //! through the worker context that the backend will fetch [super::Request]s
 //! from the associated device in order to process them.
 
+use crate::prelude::*;
+
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::marker::PhantomPinned;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
+use std::sync::{Arc, Condvar, Weak};
 use std::task::{Context, Poll};
 
 use super::minder::{NoneInFlight, QueueMinder};
@@ -73,12 +75,12 @@ impl QueueSlot {
         }
     }
     fn flush_notifications(&self) {
-        let guard = self.workers.lock().unwrap();
+        let guard = self.workers.lock();
         let Some(workers) = guard.as_ref() else {
             return;
         };
 
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
         let Some(minder) = state.minder.as_ref() else {
             // The queue isn't associated with anything yet, so there are no
             // interested workers to wake.
@@ -113,7 +115,7 @@ impl QueueSlot {
             workers.wake(wake_wids, pending, Some(self.queue_id));
 
         if !remaining_wids.is_empty() {
-            let state = self.state.lock().unwrap();
+            let state = self.state.lock();
             let Some(minder) = state.minder.as_ref() else {
                 // The queue no longer has a minder. This is unfortunate, but it
                 // is at least OK to discard `remaining_wids` here: if this
@@ -158,13 +160,13 @@ impl QueueCollection {
     }
     fn attach(&self, workers: &Arc<WorkerCollection>) {
         for slot in self.queues.iter() {
-            let old = slot.workers.lock().unwrap().replace(workers.clone());
+            let old = slot.workers.lock().replace(workers.clone());
             assert!(old.is_none(), "workers ref should not have been attached");
         }
     }
     fn detach(&self) {
         for slot in self.queues.iter() {
-            let old = slot.workers.lock().unwrap().take();
+            let old = slot.workers.lock().take();
             assert!(old.is_some(), "workers ref should have been attached");
         }
     }
@@ -178,32 +180,32 @@ impl QueueCollection {
     }
     fn set_metric_consumer(&self, consumer: Arc<dyn MetricConsumer>) {
         for queue in self.queues.iter() {
-            if let Some(minder) = queue.state.lock().unwrap().minder.as_mut() {
+            if let Some(minder) = queue.state.lock().minder.as_mut() {
                 minder.set_metric_consumer(consumer.clone());
             }
         }
     }
     fn associated_qids(&self) -> Versioned<Bitmap> {
-        self.state.lock().unwrap().associated_qids
+        self.state.lock().associated_qids
     }
     fn pause(&self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         assert!(!state.paused);
 
         state.paused = true;
         for slot in self.queues.iter() {
-            if let Some(minder) = slot.state.lock().unwrap().minder.as_ref() {
+            if let Some(minder) = slot.state.lock().minder.as_ref() {
                 minder.pause();
             }
         }
     }
     fn resume(&self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         assert!(state.paused);
 
         state.paused = false;
         for slot in self.queues.iter() {
-            let state = slot.state.lock().unwrap();
+            let state = slot.state.lock();
             let Some(minder) = state.minder.as_ref() else {
                 continue;
             };
@@ -218,7 +220,7 @@ impl QueueCollection {
             .queues
             .iter()
             .filter_map(|slot| {
-                let state = slot.state.lock().unwrap();
+                let state = slot.state.lock();
                 state.minder.as_ref().map(Arc::clone)
             })
             .collect::<Vec<_>>();
@@ -237,7 +239,7 @@ impl QueueCollection {
         let idx: usize = queue_select.into();
         let slot = self.queues.get(idx)?;
 
-        let guard = slot.state.lock().unwrap();
+        let guard = slot.state.lock();
         let minder = guard.minder.as_ref()?;
         let result = minder.next_req(wid);
 
@@ -263,7 +265,7 @@ impl QueueCollection {
 
         let (hit_qid, dreq) = queues
             .filter_map(|slot| {
-                let guard = slot.state.lock().unwrap();
+                let guard = slot.state.lock();
                 let minder = guard.minder.as_ref()?;
                 let result = minder.next_req(wid);
 
@@ -366,8 +368,8 @@ impl AttachPair {
         dev: &DeviceAttachment,
         be: &BackendAttachment,
     ) -> Result<(), AttachError> {
-        let mut dev_att_state = dev.0.att_state.lock().unwrap();
-        let mut be_att_state = be.0.att_state.lock().unwrap();
+        let mut dev_att_state = dev.0.att_state.lock();
+        let mut be_att_state = be.0.att_state.lock();
 
         if dev_att_state.is_some() {
             return Err(AttachError::DeviceAttached);
@@ -392,7 +394,7 @@ impl AttachPair {
         drop(dev_att_state);
         drop(be_att_state);
 
-        let dev_state = dev.0.dev_state.lock().unwrap();
+        let dev_state = dev.0.dev_state.lock();
         if let Some(on_attach) = dev_state.on_attach.as_ref() {
             on_attach(be.info())
         }
@@ -410,8 +412,8 @@ impl AttachPair {
             return;
         };
 
-        let mut dev_state = dev.att_state.lock().unwrap();
-        let mut be_state = be.att_state.lock().unwrap();
+        let mut dev_state = dev.att_state.lock();
+        let mut be_state = be.att_state.lock();
         match (dev_state.as_ref(), be_state.as_ref()) {
             (Some(ds), Some((bs, _))) if self.eq(ds) && self.eq(bs) => {
                 // Device and backend agree about mutual attachment
@@ -479,7 +481,7 @@ impl DeviceAttachment {
     /// If a backend is attached to this device, notify it that the queue
     /// associations for this device have changed.
     fn queues_update_assoc(&self, queues_associated: Versioned<Bitmap>) {
-        let guard = self.0.att_state.lock().unwrap();
+        let guard = self.0.att_state.lock();
         if let Some(att_state) = guard.as_ref() {
             if let Some(backend) = Weak::upgrade(&att_state.backend_attach) {
                 drop(guard);
@@ -504,9 +506,9 @@ impl DeviceAttachment {
     ) {
         let minder = QueueMinder::new(queue, self.0.queues.devid, queue_id);
 
-        let mut state = self.0.queues.state.lock().unwrap();
+        let mut state = self.0.queues.state.lock();
         let slot = self.0.queues.slot(queue_id);
-        let mut slot_state = slot.state.lock().unwrap();
+        let mut slot_state = slot.state.lock();
         assert!(
             slot_state.minder.is_none(),
             "queue slot should not be occupied"
@@ -536,9 +538,9 @@ impl DeviceAttachment {
     /// if `queue_id` is >= the max queues specified for this device, or if
     /// there is not queue associated with that ID.
     pub fn queue_dissociate(&self, queue_id: QueueId) {
-        let mut state = self.0.queues.state.lock().unwrap();
+        let mut state = self.0.queues.state.lock();
         let slot = self.0.queues.slot(queue_id);
-        let mut slot_state = slot.state.lock().unwrap();
+        let mut slot_state = slot.state.lock();
 
         let minder =
             slot_state.minder.take().expect("queue slot should be occupied");
@@ -569,14 +571,14 @@ impl DeviceAttachment {
     }
     /// Get the [DeviceInfo] of the attached backend (if any)
     pub fn info(&self) -> Option<DeviceInfo> {
-        let state = self.0.att_state.lock().unwrap();
+        let state = self.0.att_state.lock();
         let backend = Weak::upgrade(&state.as_ref()?.backend_attach)?;
         Some(backend.info)
     }
 
     /// Detach the device from attached backend (if any)
     pub fn detach(&self) {
-        let guard = self.0.att_state.lock().unwrap();
+        let guard = self.0.att_state.lock();
         if let Some(att_state) = guard.as_ref().map(Clone::clone) {
             drop(guard);
             att_state.detach();
@@ -612,7 +614,7 @@ impl DeviceAttachment {
     /// backend.  Intended for tasks such as querying the [DeviceInfo] for
     /// presentation to the guest.
     pub fn on_attach(&self, cb: OnAttachFn) {
-        self.0.dev_state.lock().unwrap().on_attach = Some(cb);
+        self.0.dev_state.lock().on_attach = Some(cb);
     }
 }
 impl Drop for DeviceAttachment {
@@ -663,7 +665,7 @@ impl WorkerSlot {
         }
     }
     fn block_for_req(&self) -> Option<DeviceRequest> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         assert!(state.active_type.is_some());
 
         loop {
@@ -724,7 +726,7 @@ impl WorkerSlot {
     }
 
     fn async_stop_sleep(&self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         if let Some(devid) = state.sleeping_on.take() {
             probes::block_wake!(|| { (devid.0, self.id as u64) });
         }
@@ -735,7 +737,7 @@ impl WorkerSlot {
     }
 
     fn update_assignment(&self, assign: &Assignment) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         if state.assign_strat.newer_than(&assign.strategy) {
             // We already have a newer assignment
             return;
@@ -759,7 +761,7 @@ impl WorkerSlot {
         state: Option<MutexGuard<WorkerState>>,
         qid_hint: Option<QueueId>,
     ) -> bool {
-        let mut state = state.unwrap_or_else(|| self.state.lock().unwrap());
+        let mut state = state.unwrap_or_else(|| self.state.lock());
         if let Some(wtype) = state.active_type {
             if state.sleeping_on.is_some() {
                 if let Some(qid) = qid_hint {
@@ -947,9 +949,9 @@ impl WorkerCollection {
     fn set_active(&self, id: WorkerId, new_type: Option<WorkerType>) -> bool {
         if let Some(slot) = self.workers.get(id) {
             let refresh_guard = {
-                let mut wstate = slot.state.lock().unwrap();
+                let mut wstate = slot.state.lock();
                 if wstate.active_type.is_some() != new_type.is_some() {
-                    let mut cstate = self.state.lock().unwrap();
+                    let mut cstate = self.state.lock();
                     cstate.set_worker_state(id, new_type.is_some());
                     wstate.active_type = new_type;
                     Some(cstate)
@@ -985,22 +987,22 @@ impl WorkerCollection {
     fn attach(&self, parent_mem: &MemAccessor, queues: &Arc<QueueCollection>) {
         for (idx, slot) in self.workers.iter().enumerate() {
             parent_mem.adopt(&slot.acc_mem, Some(format!("worker-{idx}")));
-            let mut state = slot.state.lock().unwrap();
+            let mut state = slot.state.lock();
             let old = state.queues.replace(queues.clone());
             assert!(old.is_none(), "worker slot not already attached");
         }
 
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         state.device_id = Some(queues.devid);
         state.associated_qids = queues.associated_qids();
     }
     fn detach(&self) {
         for slot in self.workers.iter() {
-            let mut state = slot.state.lock().unwrap();
+            let mut state = slot.state.lock();
             let old = state.queues.take();
             assert!(old.is_some(), "worker slot should have been attached");
         }
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         state.strategy.replace(Strategy::Idle);
         // With no device attached, the queues information should be cleared
         state.associated_qids = Versioned::default();
@@ -1038,17 +1040,17 @@ impl WorkerCollection {
         remainder
     }
     fn update_queue_associations(&self, queues_associated: Versioned<Bitmap>) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         state.associated_qids.replace_if_newer(&queues_associated);
         self.assignments_refresh(state);
     }
     fn start(&self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         state.backend_running = true;
         self.assignments_refresh(state);
     }
     fn stop(&self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         state.backend_running = false;
         self.assignments_refresh(state);
     }
@@ -1203,7 +1205,7 @@ impl BackendAttachment {
 
     /// Detach this backend from the device (if any)
     pub fn detach(&self) {
-        let guard = self.0.att_state.lock().unwrap();
+        let guard = self.0.att_state.lock();
         if let Some(att_state) =
             guard.as_ref().map(|(att_state, _)| att_state.clone())
         {
@@ -1262,7 +1264,7 @@ impl Future for WaitForReq<'_> {
         }
 
         loop {
-            let mut state = this.slot.state.lock().unwrap();
+            let mut state = this.slot.state.lock();
             match this.slot.next_req(&mut state) {
                 PollResult::Ok(dreq) => {
                     return Poll::Ready(Some(dreq));

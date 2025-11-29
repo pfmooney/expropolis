@@ -2,10 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::prelude::*;
+
 use std::ffi::c_void;
 use std::num::NonZeroU16;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
+use std::sync::{Arc, Condvar, Weak};
 
 use super::bits::*;
 use super::probes;
@@ -158,7 +160,7 @@ impl<D: PciVirtio + Send + Sync + 'static> pci::Device for D {
     }
     fn msi_update(&self, info: pci::MsiUpdate) {
         let vs = self.virtio_state();
-        let mut state = vs.state.lock().unwrap();
+        let mut state = vs.state.lock();
         if state.intr_mode != IntrMode::Msi {
             return;
         }
@@ -184,7 +186,7 @@ impl<D: PciVirtio + Send + Sync + 'static> pci::Device for D {
                 _ => Ok(()),
             };
 
-            state = vs.state.lock().unwrap();
+            state = vs.state.lock();
             if result.is_err() {
                 // An error updating the VQ interrupt config should set the
                 // device in a failed state.
@@ -291,11 +293,11 @@ impl PciVirtioState {
                 ro.write_u32(self.features_supported(dev));
             }
             LegacyReg::FeatDriver => {
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock();
                 ro.write_u32(state.nego_feat);
             }
             LegacyReg::QueuePfn => {
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock();
                 if let Some(queue) = self.queues.get(state.queue_sel) {
                     let qs = queue.get_state();
                     let addr = qs.mapping.desc_addr;
@@ -306,7 +308,7 @@ impl PciVirtioState {
                 }
             }
             LegacyReg::QueueSize => {
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock();
                 let sz = self
                     .queues
                     .get(state.queue_sel)
@@ -315,12 +317,12 @@ impl PciVirtioState {
                 ro.write_u16(sz);
             }
             LegacyReg::QueueSelect => {
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock();
                 ro.write_u16(state.queue_sel);
             }
             LegacyReg::QueueNotify => {}
             LegacyReg::DeviceStatus => {
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock();
                 ro.write_u8(state.status.bits());
             }
             LegacyReg::IsrStatus => {
@@ -329,11 +331,11 @@ impl PciVirtioState {
                 ro.write_u8(isr);
             }
             LegacyReg::MsixVectorConfig => {
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock();
                 ro.write_u16(state.msix_cfg_vec);
             }
             LegacyReg::MsixVectorQueue => {
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock();
                 let val = state
                     .msix_queue_vec
                     .get(state.queue_sel as usize)
@@ -352,7 +354,7 @@ impl PciVirtioState {
         match id {
             LegacyReg::FeatDriver => {
                 let nego = wo.read_u32() & self.features_supported(dev);
-                let mut state = self.state.lock().unwrap();
+                let mut state = self.state.lock();
                 match dev.set_features(nego) {
                     Ok(_) => {
                         state.nego_feat = nego;
@@ -363,7 +365,7 @@ impl PciVirtioState {
                 }
             }
             LegacyReg::QueuePfn => {
-                let mut state = self.state.lock().unwrap();
+                let mut state = self.state.lock();
                 let pfn = wo.read_u32();
                 if let Some(queue) = self.queues.get(state.queue_sel) {
                     let qs_old = queue.get_state();
@@ -378,7 +380,7 @@ impl PciVirtioState {
                 }
             }
             LegacyReg::QueueSelect => {
-                let mut state = self.state.lock().unwrap();
+                let mut state = self.state.lock();
                 state.queue_sel = wo.read_u16();
             }
             LegacyReg::QueueNotify => {
@@ -388,12 +390,12 @@ impl PciVirtioState {
                 self.set_status(dev, wo.read_u8());
             }
             LegacyReg::MsixVectorConfig => {
-                let mut state = self.state.lock().unwrap();
+                let mut state = self.state.lock();
                 state.msix_cfg_vec = wo.read_u16();
             }
             LegacyReg::MsixVectorQueue => {
                 let hdl = pci_state.msix_hdl().unwrap();
-                let mut state = self.state.lock().unwrap();
+                let mut state = self.state.lock();
                 let sel = state.queue_sel as usize;
                 if let Some(queue) = self.queues.get(state.queue_sel) {
                     let val = wo.read_u16();
@@ -413,7 +415,7 @@ impl PciVirtioState {
                         // interrupt handlers due to deadlock possibility.
                         drop(state);
                         queue.set_intr(MsiIntr::new(hdl, val));
-                        state = self.state.lock().unwrap();
+                        state = self.state.lock();
 
                         // With the MSI configuration updated for the virtqueue,
                         // notify the device of the change
@@ -439,7 +441,7 @@ impl PciVirtioState {
         dev.get_features() | VIRTIO_F_RING_INDIRECT_DESC as u32
     }
     fn set_status(&self, dev: &dyn VirtioDevice, status: u8) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         let val = Status::from_bits_truncate(status);
         if val == Status::RESET && state.status != Status::RESET {
             self.virtio_reset(dev, state)
@@ -464,7 +466,7 @@ impl PciVirtioState {
     /// Indicate to the guest that the VirtIO device has encountered an error of
     /// some sort and requires a reset.
     pub fn set_needs_reset(&self, dev: &dyn VirtioDevice) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         self.needs_reset_locked(dev, &mut state);
     }
 
@@ -504,7 +506,7 @@ impl PciVirtioState {
         let vs = dev.virtio_state();
         let ps = dev.pci_state();
 
-        let state = vs.state.lock().unwrap();
+        let state = vs.state.lock();
         vs.virtio_reset(dev, state);
         ps.reset(dev);
     }
@@ -515,7 +517,7 @@ impl PciVirtioState {
         new_mode: IntrMode,
         is_import: bool,
     ) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         let old_mode = state.intr_mode;
         if new_mode == old_mode {
             return;
@@ -539,7 +541,7 @@ impl PciVirtioState {
                 for queue in self.queues.iter() {
                     queue.set_intr(IsrIntr::new(&self.isr_state));
                 }
-                state = self.state.lock().unwrap();
+                state = self.state.lock();
             }
             _ => {}
         }
@@ -561,7 +563,7 @@ impl PciVirtioState {
                     // handlers due to deadlock possibility.
                     drop(state);
                     vq.set_intr(MsiIntr::new(hdl.clone(), vec));
-                    state = self.state.lock().unwrap();
+                    state = self.state.lock();
                 }
             }
             _ => {}
@@ -571,7 +573,7 @@ impl PciVirtioState {
     }
 
     pub fn negotiated_features(&self) -> u32 {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
         state.nego_feat
     }
 }
@@ -581,7 +583,7 @@ impl MigrateMulti for PciVirtioState {
         output: &mut PayloadOutputs,
         _ctx: &MigrateCtx,
     ) -> Result<(), MigrateStateError> {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
         let (isr_queue, isr_cfg) = self.isr_state.read();
 
         let device = migrate::DeviceStateV1 {
@@ -608,7 +610,7 @@ impl MigrateMulti for PciVirtioState {
         let input: migrate::PciVirtioStateV1 = offer.take()?;
 
         let dev = input.device;
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         state.status = Status::from_bits(dev.status).ok_or_else(|| {
             MigrateStateError::ImportFailed(format!(
                 "virtio status: failed to import saved value {:#x}",
@@ -714,7 +716,7 @@ impl IsrState {
     }
     /// Read ISR value.  Returns (`intr_queue`, `intr_cfg`)
     fn read(&self) -> (bool, bool) {
-        let inner = self.0.lock().unwrap();
+        let inner = self.0.lock();
         (inner.intr_queue, inner.intr_cfg)
     }
     /// Import ISR value
@@ -723,7 +725,7 @@ impl IsrState {
     /// underlying pin, as is necessary when doing a migration related import of
     /// various device states.
     fn import(&self, intr_queue: bool, intr_cfg: bool) {
-        let mut inner = self.0.lock().unwrap();
+        let mut inner = self.0.lock();
         inner.intr_queue = intr_queue;
         inner.intr_cfg = intr_cfg;
         if let Some(pin) = inner.pin.as_ref() {
@@ -732,7 +734,7 @@ impl IsrState {
     }
     /// Sync ISR state with any associated interrupt pin
     fn sync_pin(&self, f: impl FnOnce(&mut IsrInner)) {
-        let mut inner = self.0.lock().unwrap();
+        let mut inner = self.0.lock();
 
         let raised_before = inner.raised();
         f(&mut inner);
@@ -754,7 +756,7 @@ impl IsrState {
     }
     /// Disable state emission via interrupt pin
     fn disable(&self) {
-        let mut inner = self.0.lock().unwrap();
+        let mut inner = self.0.lock();
         if !inner.disabled {
             if let Some(pin) = inner.pin.as_ref() {
                 pin.deassert();
@@ -764,7 +766,7 @@ impl IsrState {
     }
     /// Enable state emission via interrupt pin
     fn enable(&self, is_import: bool) {
-        let mut inner = self.0.lock().unwrap();
+        let mut inner = self.0.lock();
         if inner.disabled {
             if inner.raised() && !is_import {
                 if let Some(pin) = inner.pin.as_ref() {
@@ -779,7 +781,7 @@ impl IsrState {
     /// # Panics
     /// If called more than once on a given [IsrState]
     fn set_pin(&self, pin: Arc<dyn IntrPin>) {
-        let mut inner = self.0.lock().unwrap();
+        let mut inner = self.0.lock();
         let old = inner.pin.replace(pin);
         // Loosen this in the future if/when PCI device attachment logic becomes
         // more sophisticated.

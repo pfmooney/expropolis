@@ -2,10 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::prelude::*;
+
 use std::collections::VecDeque;
 use std::convert::TryFrom;
 use std::mem::replace;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::common::*;
 use crate::hw::ibmpc;
@@ -329,14 +331,14 @@ impl PS2Ctrl {
         bus.register(ibmpc::PORT_PS2_DATA, 1, Arc::clone(&piofn)).unwrap();
         bus.register(ibmpc::PORT_PS2_CMD_STATUS, 1, piofn).unwrap();
 
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         state.pri_pin = Some(pri_pin);
         state.aux_pin = Some(aux_pin);
         state.reset_pin = Some(reset_pin);
     }
 
     pub fn key_event(&self, ke: KeyEvent) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         let translate = state.ctrl_cfg.contains(CtrlCfg::PRI_XLATE_EN);
         let key_rep;
 
@@ -414,7 +416,7 @@ impl PS2Ctrl {
     }
 
     fn data_write(&self, v: u8) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         let cmd_prefix = replace(&mut state.cmd_prefix, None);
 
         probes::ps2ctrl_data_write!(|| v);
@@ -457,7 +459,7 @@ impl PS2Ctrl {
         self.update_intr(&mut state);
     }
     fn data_read(&self) -> u8 {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         if let Some(rval) = state.resp {
             state.resp = None;
             probes::ps2ctrl_data_read!(|| rval);
@@ -478,7 +480,7 @@ impl PS2Ctrl {
         }
     }
     fn cmd_write(&self, v: u8) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         probes::ps2ctrl_cmd_write!(|| v);
         match v {
             PS2C_CMD_READ_CTRL_CFG => {
@@ -540,7 +542,7 @@ impl PS2Ctrl {
         }
     }
     fn status_read(&self) -> u8 {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
         // Always report unlocked
         let mut val = CtrlStatus::UNLOCKED;
 
@@ -582,7 +584,7 @@ impl PS2Ctrl {
         }
     }
     fn reset(&self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         state.pri_port.reset();
         state.aux_port.reset();
         state.resp = None;
@@ -611,7 +613,7 @@ impl MigrateSingle for PS2Ctrl {
         &self,
         _ctx: &MigrateCtx,
     ) -> Result<PayloadOutput, MigrateStateError> {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
         let kbd = &state.pri_port;
         let mouse = &state.aux_port;
 
@@ -653,7 +655,7 @@ impl MigrateSingle for PS2Ctrl {
             mouse: saved_mouse,
         } = offer.parse()?;
 
-        let mut inner = self.state.lock().unwrap();
+        let mut inner = self.state.lock();
 
         inner.resp = saved_ctrl.response;
         inner.cmd_prefix = saved_ctrl.cmd_prefix;

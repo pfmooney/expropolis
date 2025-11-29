@@ -4,9 +4,11 @@
 
 //! A PCI topology containing one or more PCI buses.
 
+use crate::prelude::*;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Error as IoError, ErrorKind};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::common::RWOp;
 use crate::hw::ids;
@@ -100,7 +102,7 @@ impl Topology {
         location: BusLocation,
         rwo: RWOp,
     ) -> Option<()> {
-        let guard = self.inner.lock().unwrap();
+        let guard = self.inner.lock();
         let device = match guard.routed_buses.get(&bus) {
             Some(bus_index) => {
                 let bus = &self.buses[bus_index.0];
@@ -140,11 +142,11 @@ impl Topology {
                         logical_id.0, routed_id.0
                     )
                 });
-            let mut guard = self.inner.lock().unwrap();
+            let mut guard = self.inner.lock();
             let _old = guard.routed_buses.insert(routed_id, *bus_index);
             assert!(_old.is_none());
         } else {
-            let mut guard = self.inner.lock().unwrap();
+            let mut guard = self.inner.lock();
             let _old = guard.routed_buses.remove(&routed_id);
             assert!(_old.is_some());
         }

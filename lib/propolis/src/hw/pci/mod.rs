@@ -2,11 +2,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::prelude::*;
+
 use std::fmt::Result as FmtResult;
 use std::fmt::{Display, Formatter};
 use std::io::{Error, ErrorKind};
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::common::*;
 use crate::intr_pins::IntrPin;
@@ -332,7 +334,7 @@ impl PioCfgDecoder {
             // XXX expect aligned/sized reads
             return;
         }
-        let mut addr = self.addr.lock().unwrap();
+        let mut addr = self.addr.lock();
         match rwop {
             RWOp::Read(ro) => ro.write_u32(*addr),
             RWOp::Write(wo) => *addr = wo.read_u32(),
@@ -342,7 +344,7 @@ impl PioCfgDecoder {
     where
         F: FnMut(&Bdf, RWOp) -> Option<()>,
     {
-        let locked_addr = self.addr.lock().unwrap();
+        let locked_addr = self.addr.lock();
         let addr = *locked_addr;
         drop(locked_addr);
 
@@ -364,12 +366,12 @@ impl PioCfgDecoder {
         }
     }
     pub fn addr(&self) -> u32 {
-        let addr = self.addr.lock().unwrap();
+        let addr = self.addr.lock();
         *addr
     }
 
     pub(super) fn set_addr(&self, addr: u32) {
-        let mut inner = self.addr.lock().unwrap();
+        let mut inner = self.addr.lock();
         *inner = addr;
     }
 }

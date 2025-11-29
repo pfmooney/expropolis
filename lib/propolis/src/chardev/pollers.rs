@@ -2,10 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::prelude::*;
+
 use std::collections::VecDeque;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar};
 use std::time::{Duration, Instant};
 
 use crate::chardev::{BlockingSource, Sink, Source};
@@ -86,7 +88,7 @@ impl SourceBuffer {
     /// wait to let it fill further so we make fewer trips back and forth.
     async fn leading_delay(&self) -> Option<Duration> {
         let last_poll = {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.inner.lock();
             // No delay if already full
             if inner.is_full() {
                 return None;
@@ -115,7 +117,7 @@ impl SourceBuffer {
         loop {
             tokio::select! {
                 _ = sleep(self.params.poll_interval) => {
-                    let mut inner = self.inner.lock().unwrap();
+                    let mut inner = self.inner.lock();
                     if inner.buf.is_empty() {
                         inner.last_poll = Some(Instant::now());
                         misses += 1;
@@ -138,7 +140,7 @@ impl SourceBuffer {
     }
 
     pub fn read_data(&self, buf: &mut [u8], source: &dyn Source) -> usize {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         let mut copied = copy_and_consume(&mut inner.buf, buf);
         // Can also attempt to read direct from the Source
         if copied < buf.len() {
@@ -153,7 +155,7 @@ impl SourceBuffer {
 
     fn notify(&self, source: &dyn Source) {
         if self.poll_active.load(Ordering::Acquire) {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock();
             if !inner.is_full() {
                 if let Some(c) = source.read() {
                     inner.buf.push(c);
@@ -207,7 +209,7 @@ impl SinkBuffer {
     pub async fn wait_empty(&self) {
         loop {
             {
-                let mut inner = self.inner.lock().unwrap();
+                let mut inner = self.inner.lock();
                 if inner.buf.is_empty() {
                     inner.wait_empty = false;
                     return;
@@ -234,7 +236,7 @@ impl SinkBuffer {
         }
         loop {
             {
-                let mut inner = self.inner.lock().unwrap();
+                let mut inner = self.inner.lock();
                 let mut nwritten = 0;
 
                 // If the buffer started empty, try to kick the sink into
@@ -273,7 +275,7 @@ impl SinkBuffer {
     }
 
     fn notify(&self, sink: &dyn Sink) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         while let Some(c) = inner.buf.pop_front() {
             if !sink.write(c) {
                 inner.buf.push_front(c);
@@ -338,7 +340,7 @@ impl BlockingSourceBuffer {
         }
         loop {
             let nread = {
-                let mut inner = self.inner.lock().unwrap();
+                let mut inner = self.inner.lock();
                 inner.last_poll = Some(Instant::now());
                 let nread = copy_and_consume(&mut inner.buf, buf);
                 self.consume_cv.notify_one();
@@ -356,7 +358,7 @@ impl BlockingSourceBuffer {
     /// wait to let it fill further so we make fewer trips back and forth.
     async fn leading_delay(&self) -> Option<Duration> {
         let last_poll = {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.inner.lock();
             // No delay if already full
             if inner.is_full() {
                 return None;
@@ -385,7 +387,7 @@ impl BlockingSourceBuffer {
         loop {
             tokio::select! {
                 _ = sleep(self.params.poll_interval) => {
-                    let mut inner = self.inner.lock().unwrap();
+                    let mut inner = self.inner.lock();
                     if inner.buf.is_empty() {
                         inner.last_poll = Some(Instant::now());
                         misses += 1;
@@ -408,7 +410,7 @@ impl BlockingSourceBuffer {
     }
 
     fn consume(&self, mut data: &[u8]) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         while !data.is_empty() {
             if inner.is_full() {
                 self.data_ready.notify_one();
@@ -676,7 +678,7 @@ mod test {
         let uart = Arc::new(TestUart::new(1, 1));
         let wpoll = SinkBuffer::new(NonZeroUsize::new(3).unwrap());
         wpoll.attach(uart.as_ref());
-        assert_eq!(3, wpoll.inner.lock().unwrap().buf.capacity());
+        assert_eq!(3, wpoll.inner.lock().buf.capacity());
 
         // By attempting to write five bytes, we fill the following pipeline
         // in stages:
@@ -744,14 +746,14 @@ mod test {
 
         // Add a byte which can later get popped out of the source.
         fn push_source(&self, byte: u8) {
-            let mut source = self.source.lock().unwrap();
+            let mut source = self.source.lock();
             assert!(source.len() < self.source_cap);
             source.push_back(byte);
         }
 
         // Pop a byte out of the sink.
         fn pop_sink(&self) -> Option<u8> {
-            let mut sink = self.sink.lock().unwrap();
+            let mut sink = self.sink.lock();
             sink.pop_front()
         }
 
@@ -766,7 +768,7 @@ mod test {
 
     impl Sink for TestUart {
         fn write(&self, data: u8) -> bool {
-            let mut sink = self.sink.lock().unwrap();
+            let mut sink = self.sink.lock();
             if sink.len() < self.sink_cap {
                 sink.push_back(data);
                 true
@@ -781,7 +783,7 @@ mod test {
 
     impl Source for TestUart {
         fn read(&self) -> Option<u8> {
-            let mut source = self.source.lock().unwrap();
+            let mut source = self.source.lock();
             source.pop_front()
         }
         fn discard(&self, _count: usize) -> usize {

@@ -2,9 +2,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::prelude::*;
+
 use std::io::{Error, ErrorKind, Result};
 use std::num::NonZeroUsize;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::block;
 use crate::common::Lifecycle;
@@ -65,7 +67,7 @@ impl SharedState {
                     Error::new(ErrorKind::Other, "bad guest region")
                 })?;
 
-                let bytes = self.bytes.lock().unwrap();
+                let bytes = self.bytes.lock();
                 process_read_request(&bytes, off as u64, len, &maps)?;
             }
             block::Operation::Write(off, len) => {
@@ -80,7 +82,7 @@ impl SharedState {
                     Error::new(ErrorKind::Other, "bad guest region")
                 })?;
 
-                let mut bytes = self.bytes.lock().unwrap();
+                let mut bytes = self.bytes.lock();
                 process_write_request(&mut bytes, off as u64, len, &maps)?;
             }
             block::Operation::Flush => {
@@ -255,7 +257,7 @@ impl MigrateSingle for InMemoryBackend {
         &self,
         _ctx: &MigrateCtx,
     ) -> std::result::Result<PayloadOutput, MigrateStateError> {
-        let bytes = self.shared_state.bytes.lock().unwrap();
+        let bytes = self.shared_state.bytes.lock();
         Ok(migrate::InMemoryBlockBackendV1 { bytes: bytes.clone() }.into())
     }
 
@@ -265,7 +267,7 @@ impl MigrateSingle for InMemoryBackend {
         _ctx: &MigrateCtx,
     ) -> std::result::Result<(), MigrateStateError> {
         let data: migrate::InMemoryBlockBackendV1 = offer.parse()?;
-        let mut guard = self.shared_state.bytes.lock().unwrap();
+        let mut guard = self.shared_state.bytes.lock();
         if guard.len() != data.bytes.len() {
             return Err(MigrateStateError::ImportFailed(format!(
                 "imported in-memory block backend data has length {}, \

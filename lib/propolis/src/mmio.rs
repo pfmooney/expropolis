@@ -2,7 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use std::sync::{Arc, Mutex};
+use crate::prelude::*;
+
+use std::sync::Arc;
 
 use crate::common::*;
 use crate::util::aspace::ASpace;
@@ -33,10 +35,10 @@ impl MmioBus {
         len: usize,
         func: Arc<MmioFn>,
     ) -> Result<()> {
-        self.map.lock().unwrap().register(start, len, func)
+        self.map.lock().register(start, len, func)
     }
     pub fn unregister(&self, addr: usize) -> Result<()> {
-        self.map.lock().unwrap().unregister(addr).map(|_| ())
+        self.map.lock().unregister(addr).map(|_| ())
     }
 
     pub fn handle_write(&self, addr: usize, bytes: u8, val: u64) -> Result<()> {
@@ -89,7 +91,7 @@ impl MmioBus {
     where
         F: FnOnce(usize, usize, &Arc<MmioFn>),
     {
-        let map = self.map.lock().unwrap();
+        let map = self.map.lock();
         let (start, _len, func) = map.region_at(addr)?;
         let func = Arc::clone(func);
         // unlock map before entering handler
@@ -99,7 +101,7 @@ impl MmioBus {
     }
 
     pub(crate) fn clear(&self) {
-        let mut map = self.map.lock().unwrap();
+        let mut map = self.map.lock();
         map.clear();
     }
 }

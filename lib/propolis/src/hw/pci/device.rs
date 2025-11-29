@@ -2,7 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use crate::prelude::*;
+
+use std::sync::{Arc, Condvar};
 
 use super::bar::{BarDefine, Bars};
 use super::bits::*;
@@ -276,7 +278,7 @@ impl DeviceState {
         // device is notified of mode change w/o state locked
         dev.interrupt_mode_change(next_mode);
 
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         assert!(state.update_in_progress);
         state.update_in_progress = false;
         self.cond.notify_all();
@@ -297,13 +299,13 @@ impl DeviceState {
             StdCfgReg::RevisionId => ro.write_u8(self.ident.revision_id),
 
             StdCfgReg::Command => {
-                let val = self.state.lock().unwrap().reg_command.bits();
+                let val = self.state.lock().reg_command.bits();
                 ro.write_u16(val);
             }
             StdCfgReg::Status => {
                 let mut val = RegStatus::empty();
                 if self.lintr_support {
-                    let state = self.state.lock().unwrap();
+                    let state = self.state.lock();
                     if let Some((_id, pin)) = state.attached().lintr_cfg() {
                         if pin.is_asserted() {
                             val.insert(RegStatus::INTR_STATUS);
@@ -315,12 +317,10 @@ impl DeviceState {
                 }
                 ro.write_u16(val.bits());
             }
-            StdCfgReg::IntrLine => {
-                ro.write_u8(self.state.lock().unwrap().reg_intr_line)
-            }
+            StdCfgReg::IntrLine => ro.write_u8(self.state.lock().reg_intr_line),
             StdCfgReg::IntrPin => {
                 if self.lintr_support {
-                    let state = self.state.lock().unwrap();
+                    let state = self.state.lock();
                     let pin_ident = state
                         .attach
                         .as_ref()
@@ -333,7 +333,7 @@ impl DeviceState {
                 }
             }
             StdCfgReg::Bar(bar) => {
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock();
                 ro.write_u32(state.bars.reg_read(*bar))
             }
             StdCfgReg::ExpansionRomAddr => {
@@ -349,7 +349,7 @@ impl DeviceState {
             }
             StdCfgReg::HeaderType => {
                 let mut val = HEADER_TYPE_DEVICE;
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock();
                 if state
                     .attach
                     .as_ref()
@@ -388,11 +388,11 @@ impl DeviceState {
                 self.reg_cmd_write(dev, new);
             }
             StdCfgReg::IntrLine => {
-                self.state.lock().unwrap().reg_intr_line = wo.read_u8();
+                self.state.lock().reg_intr_line = wo.read_u8();
             }
             StdCfgReg::Bar(bar) => {
                 let val = wo.read_u32();
-                let mut state = self.state.lock().unwrap();
+                let mut state = self.state.lock();
                 if let Some(res) = state.bars.reg_write(*bar, val) {
                     let attach = state.attached();
                     if state.decoding_active(&res.def) {
@@ -439,7 +439,7 @@ impl DeviceState {
         }
     }
     fn reg_cmd_write(&self, dev: &dyn Device, val: RegCmd) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         let attach = state.attached();
         let diff = val ^ state.reg_command;
 
@@ -512,12 +512,12 @@ impl DeviceState {
     }
 
     pub(crate) fn get_intr_mode(&self) -> IntrMode {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
         self.which_intr_mode(&state)
     }
 
     pub(crate) fn bar(&self, id: BarN) -> Option<BarState> {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
         state.bars.get(id).map(|(def, value)| {
             let decode_en = match def {
                 BarDefine::Pio(_) => state.pio_en(),
@@ -560,7 +560,7 @@ impl DeviceState {
                 if let RWOp::Write(_) = rwo {
                     // MSI-X cap writes may result in a change to the interrupt
                     // mode of the device which requires extra locking concerns.
-                    let state = self.state.lock().unwrap();
+                    let state = self.state.lock();
                     let _state = self.affects_intr_mode(dev, state, |_state| {
                         msix_cfg.cfg_rw(rwo, |info| {
                             self.notify_msi_update(dev, info)
@@ -580,7 +580,7 @@ impl DeviceState {
         dev.msi_update(info);
     }
     pub fn reset(&self, dev: &dyn Device) {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
 
         let mut state = self.affects_intr_mode(dev, state, |state| {
             state.reg_command.reset();
@@ -603,7 +603,7 @@ impl DeviceState {
         }
     }
     fn attach(&self, attachment: bus::Attachment) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         let _old = state.attach.replace(attachment);
         assert!(_old.is_none());
         let attach = state.attach.as_ref().unwrap();
@@ -612,7 +612,7 @@ impl DeviceState {
     }
 
     pub fn lintr_pin(&self) -> Option<Arc<dyn IntrPin>> {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
         let attach = state.attach.as_ref()?;
         let (_id, pin) = attach.lintr_cfg()?;
         Some(Arc::clone(pin))
@@ -624,7 +624,7 @@ impl DeviceState {
     }
 
     pub fn export(&self) -> migrate::PciStateV1 {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
         let msix = self.msix_cfg.as_ref().map(|cfg| cfg.export());
         migrate::PciStateV1 {
             reg_command: state.reg_command.bits(),
@@ -638,7 +638,7 @@ impl DeviceState {
         &self,
         state: migrate::PciStateV1,
     ) -> Result<(), MigrateStateError> {
-        let mut inner = self.state.lock().unwrap();
+        let mut inner = self.state.lock();
         inner.reg_command =
             RegCmd::from_bits(state.reg_command).ok_or_else(|| {
                 MigrateStateError::ImportFailed(format!(
@@ -868,15 +868,15 @@ impl MsixCfg {
         self.map.process(&mut rwo, |id, rwo| match rwo {
             RWOp::Read(ro) => match id {
                 MsixBarReg::Addr(i) => {
-                    let ent = self.entries[*i as usize].lock().unwrap();
+                    let ent = self.entries[*i as usize].lock();
                     ro.write_u64(ent.addr);
                 }
                 MsixBarReg::Data(i) => {
-                    let ent = self.entries[*i as usize].lock().unwrap();
+                    let ent = self.entries[*i as usize].lock();
                     ro.write_u32(ent.data);
                 }
                 MsixBarReg::VecCtrl(i) => {
-                    let ent = self.entries[*i as usize].lock().unwrap();
+                    let ent = self.entries[*i as usize].lock();
                     let mut val = 0;
                     if ent.mask_vec {
                         val |= MSIX_VEC_MASK;
@@ -894,22 +894,22 @@ impl MsixCfg {
                 // If modifying an individual entry, its lock needs to be dropped before making
                 // the `updatef` callback, since it may attempt to access the entry itself.  To
                 // synchronize access, hold on to the state lock across that call.
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock();
                 match id {
                     MsixBarReg::Addr(i) => {
-                        let mut ent = self.entries[*i as usize].lock().unwrap();
+                        let mut ent = self.entries[*i as usize].lock();
                         ent.addr = wo.read_u64();
                         drop(ent);
                         updatef(MsiUpdate::Modify(*i));
                     }
                     MsixBarReg::Data(i) => {
-                        let mut ent = self.entries[*i as usize].lock().unwrap();
+                        let mut ent = self.entries[*i as usize].lock();
                         ent.data = wo.read_u32();
                         drop(ent);
                         updatef(MsiUpdate::Modify(*i));
                     }
                     MsixBarReg::VecCtrl(i) => {
-                        let mut ent = self.entries[*i as usize].lock().unwrap();
+                        let mut ent = self.entries[*i as usize].lock();
                         let val = wo.read_u32();
                         ent.mask_vec = val & MSIX_VEC_MASK != 0;
                         ent.check_mask();
@@ -931,7 +931,7 @@ impl MsixCfg {
             for bitpos in 0..8 {
                 let idx = ((i + offset) * 8) + bitpos;
                 if idx < self.count as usize {
-                    let ent = self.entries[idx].lock().unwrap();
+                    let ent = self.entries[idx].lock();
                     if ent.pending {
                         val |= 1 << bitpos;
                     }
@@ -946,7 +946,7 @@ impl MsixCfg {
                 RWOp::Read(ro) => {
                     match id {
                         MsixCapReg::MsgCtrl => {
-                            let state = self.state.lock().unwrap();
+                            let state = self.state.lock();
                             // low 10 bits hold `count - 1`
                             let mut val = self.count - 1;
                             if state.enabled {
@@ -972,7 +972,7 @@ impl MsixCfg {
                     match id {
                         MsixCapReg::MsgCtrl => {
                             let val = wo.read_u16();
-                            let mut state = self.state.lock().unwrap();
+                            let mut state = self.state.lock();
                             let new_ena = val & MSIX_MSGCTRL_ENABLE != 0;
                             let old_ena = state.enabled;
                             let new_mask = val & MSIX_MSGCTRL_FMASK != 0;
@@ -1009,22 +1009,22 @@ impl MsixCfg {
     }
     fn each_entry(&self, mut cb: impl FnMut(&mut MsixEntry)) {
         for ent in self.entries.iter() {
-            let mut locked = ent.lock().unwrap();
+            let mut locked = ent.lock();
             cb(&mut locked)
         }
     }
     fn fire(&self, idx: u16) {
         assert!(idx < self.count);
-        let mut ent = self.entries[idx as usize].lock().unwrap();
+        let mut ent = self.entries[idx as usize].lock();
         ent.fire();
     }
     fn is_enabled(&self) -> bool {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
         state.enabled
     }
     fn read(&self, idx: u16) -> MsiEnt {
         assert!(idx < self.count);
-        let ent = self.entries[idx as usize].lock().unwrap();
+        let ent = self.entries[idx as usize].lock();
         MsiEnt {
             addr: ent.addr,
             data: ent.data,
@@ -1033,7 +1033,7 @@ impl MsixCfg {
         }
     }
     fn reset(&self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         state.enabled = false;
         state.func_mask = false;
         drop(state);
@@ -1041,15 +1041,15 @@ impl MsixCfg {
     }
     fn attach(&self, msi_acc: &MsiAccessor) {
         for entry in self.entries.iter() {
-            let mut guard = entry.lock().unwrap();
+            let mut guard = entry.lock();
             guard.acc_msi = Some(msi_acc.child(None));
         }
     }
     fn export(&self) -> migrate::MsixStateV1 {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
         let mut entries = Vec::new();
         for entry in self.entries.iter() {
-            let lentry = entry.lock().unwrap();
+            let lentry = entry.lock();
             entries.push(migrate::MsixEntryV1 {
                 addr: lentry.addr,
                 data: lentry.data,
@@ -1068,7 +1068,7 @@ impl MsixCfg {
         &self,
         state: migrate::MsixStateV1,
     ) -> Result<(), MigrateStateError> {
-        let mut inner = self.state.lock().unwrap();
+        let mut inner = self.state.lock();
 
         if self.count != state.count {
             return Err(MigrateStateError::ImportFailed(format!(
@@ -1086,7 +1086,7 @@ impl MsixCfg {
         inner.enabled = state.is_enabled;
         inner.func_mask = state.is_func_masked;
         for (entry, saved) in self.entries.iter().zip(state.entries) {
-            let mut entry = entry.lock().unwrap();
+            let mut entry = entry.lock();
             entry.addr = saved.addr;
             entry.data = saved.data;
             entry.mask_vec = saved.is_vec_masked;

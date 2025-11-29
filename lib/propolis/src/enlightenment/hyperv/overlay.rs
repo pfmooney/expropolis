@@ -73,9 +73,11 @@
 //!
 //! [`Lifecycle::halt`]: crate::lifecycle::Lifecycle::halt
 
+use crate::prelude::*;
+
 use std::{
     collections::{btree_map::Entry, BTreeMap, BTreeSet},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use thiserror::Error;
@@ -474,7 +476,7 @@ impl OverlayManager {
 
     /// Returns `true` if this manager has no active overlays.
     pub(super) fn is_empty(&self) -> bool {
-        self.inner.lock().unwrap().overlays.is_empty()
+        self.inner.lock().overlays.is_empty()
     }
 
     /// Adds an overlay of the supplied `kind` with the supplied `contents` over
@@ -484,7 +486,7 @@ impl OverlayManager {
         pfn: Pfn,
         kind: OverlayKind,
     ) -> Result<OverlayPage, OverlayError> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         inner.add_overlay(pfn, kind, &self.acc_mem)?;
         Ok(OverlayPage { manager: self.clone(), kind, pfn })
     }
@@ -496,11 +498,7 @@ impl OverlayManager {
         pfn: Pfn,
         kind: OverlayKind,
     ) -> Result<(), OverlayError> {
-        self.inner
-            .lock()
-            .unwrap()
-            .remove_overlay(pfn, kind, &self.acc_mem)
-            .map(|_| ())
+        self.inner.lock().remove_overlay(pfn, kind, &self.acc_mem).map(|_| ())
     }
 
     /// Moves an overlay of the supplied `kind` from `from_pfn` to `to_pfn`.
@@ -510,12 +508,7 @@ impl OverlayManager {
         to_pfn: Pfn,
         kind: OverlayKind,
     ) -> Result<(), OverlayError> {
-        self.inner.lock().unwrap().move_overlay(
-            from_pfn,
-            to_pfn,
-            kind,
-            &self.acc_mem,
-        )
+        self.inner.lock().move_overlay(from_pfn, to_pfn, kind, &self.acc_mem)
     }
 }
 

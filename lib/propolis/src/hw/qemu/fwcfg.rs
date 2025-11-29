@@ -2,11 +2,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::prelude::*;
+
 use std::collections::{btree_map, BTreeMap};
 use std::io::Write;
 use std::mem::size_of;
 use std::ops::{Deref, DerefMut};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::Arc;
 
 use crate::accessors::MemAccessor;
 use crate::common::*;
@@ -333,7 +335,7 @@ impl FwCfg {
         &self,
         ramfb: Option<Arc<RamFb>>,
     ) -> Option<Arc<RamFb>> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         std::mem::replace(&mut state.ramfb, ramfb)
     }
 
@@ -344,7 +346,7 @@ impl FwCfg {
         id: LegacyId,
         entry: Entry,
     ) -> Result<(), InsertError> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         state.directory.insert_legacy(id, entry)
     }
     /// Insert entry with specified `name`
@@ -355,7 +357,7 @@ impl FwCfg {
         name: &str,
         entry: Entry,
     ) -> Result<u16, InsertError> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         let selector = state
             .directory
             .next_named_selector()
@@ -365,13 +367,13 @@ impl FwCfg {
     }
 
     pub fn remove(&self, selector: u16) -> Option<Entry> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         let entry = state.directory.remove(selector)?;
         Self::ensure_valid_selected(&mut state);
         Some(entry)
     }
     pub fn remove_named(&self, name: &str) -> Option<Entry> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         let selector = state.directory.named_selector(name)?;
         let entry = state
             .directory
@@ -399,7 +401,7 @@ impl FwCfg {
     }
 
     fn pio_read(&self, port: u16, ro: &mut ReadOp) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         match port {
             FW_CFG_IOP_SELECTOR => {
                 if ro.len() == 2 {
@@ -448,7 +450,7 @@ impl FwCfg {
     }
 
     fn pio_write(&self, port: u16, wo: &mut WriteOp) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         match port {
             FW_CFG_IOP_SELECTOR => {
                 if wo.len() == 2 {
@@ -694,7 +696,7 @@ impl Lifecycle for FwCfg {
         Migrator::Single(self)
     }
     fn reset(&self) {
-        self.state.lock().unwrap().reset();
+        self.state.lock().reset();
     }
 }
 impl MigrateSingle for FwCfg {
@@ -702,7 +704,7 @@ impl MigrateSingle for FwCfg {
         &self,
         _ctx: &MigrateCtx,
     ) -> Result<PayloadOutput, MigrateStateError> {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
         let selected =
             state.selected.as_ref().map(|sel| migrate::FwCfgSelectedV2 {
                 selector: sel.selector,
@@ -730,7 +732,7 @@ impl MigrateSingle for FwCfg {
     ) -> Result<(), MigrateStateError> {
         let mut data: migrate::FwCfgV2 = offer.parse()?;
 
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         state.dma_addr_low = data.dma_addr as u32;
         state.dma_addr_high = (data.dma_addr >> 32) as u32;
         state.selected = data.selected.take().map(|s| SelectedEntry {

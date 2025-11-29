@@ -4,7 +4,9 @@
 
 #![allow(clippy::mutex_atomic)]
 
-use std::sync::{Arc, Mutex, Weak};
+use crate::prelude::*;
+
+use std::sync::{Arc, Weak};
 
 use crate::vmm::VmmHdl;
 
@@ -113,7 +115,7 @@ impl LegacyPIC {
     fn import_irq(&self, op: PinOp, irq: u8) {
         assert!(irq < PIN_COUNT);
 
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
 
         // Update our tracked pin level count, but *don't* actually perform the
         // ioctl to assert the bhyve interrupt, since the kernelspace pin states
@@ -124,7 +126,7 @@ impl LegacyPIC {
     fn do_irq(&self, op: PinOp, irq: u8) {
         assert!(irq < PIN_COUNT);
 
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         if inner.pins[irq as usize].process_op(&op) {
             match op {
                 PinOp::Assert => {
@@ -153,7 +155,7 @@ impl LegacyPin {
 }
 impl IntrPin for LegacyPin {
     fn assert(&self) {
-        let mut asserted = self.asserted.lock().unwrap();
+        let mut asserted = self.asserted.lock();
         if !*asserted {
             *asserted = true;
             if let Some(pic) = Weak::upgrade(&self.pic) {
@@ -162,7 +164,7 @@ impl IntrPin for LegacyPin {
         }
     }
     fn deassert(&self) {
-        let mut asserted = self.asserted.lock().unwrap();
+        let mut asserted = self.asserted.lock();
         if *asserted {
             *asserted = false;
             if let Some(pic) = Weak::upgrade(&self.pic) {
@@ -171,7 +173,7 @@ impl IntrPin for LegacyPin {
         }
     }
     fn pulse(&self) {
-        let asserted = self.asserted.lock().unwrap();
+        let asserted = self.asserted.lock();
         if !*asserted {
             if let Some(pic) = Weak::upgrade(&self.pic) {
                 pic.do_irq(PinOp::Pulse, self.irq);
@@ -179,11 +181,11 @@ impl IntrPin for LegacyPin {
         }
     }
     fn is_asserted(&self) -> bool {
-        let asserted = self.asserted.lock().unwrap();
+        let asserted = self.asserted.lock();
         *asserted
     }
     fn import_state(&self, is_asserted: bool) {
-        let mut asserted = self.asserted.lock().unwrap();
+        let mut asserted = self.asserted.lock();
         if *asserted != is_asserted {
             *asserted = is_asserted;
             if let Some(pic) = Weak::upgrade(&self.pic) {
@@ -211,25 +213,25 @@ impl FuncPin {
 }
 impl IntrPin for FuncPin {
     fn assert(&self) {
-        let mut inner = self.0.lock().unwrap();
+        let mut inner = self.0.lock();
         if !inner.level {
             inner.level = true;
             (inner.func)(inner.level);
         }
     }
     fn deassert(&self) {
-        let mut inner = self.0.lock().unwrap();
+        let mut inner = self.0.lock();
         if inner.level {
             inner.level = false;
             (inner.func)(inner.level);
         }
     }
     fn is_asserted(&self) -> bool {
-        let inner = self.0.lock().unwrap();
+        let inner = self.0.lock();
         inner.level
     }
     fn import_state(&self, is_asserted: bool) {
-        let mut inner = self.0.lock().unwrap();
+        let mut inner = self.0.lock();
         // Set the state to the imported state without calling the function ---
         // presumably, whatever the function does already happened prior to the
         // import.

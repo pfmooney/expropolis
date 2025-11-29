@@ -14,6 +14,8 @@ pub extern crate usdt;
 #[macro_use]
 extern crate bitflags;
 
+pub mod prelude;
+
 pub mod accessors;
 pub mod api_version;
 pub mod block;

@@ -2,7 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use std::sync::{Arc, Mutex};
+use crate::prelude::*;
+
+use std::sync::Arc;
 
 use crate::common::Lifecycle;
 use crate::migrate::*;
@@ -25,7 +27,7 @@ impl BhyvePmTimer {
         })
     }
     fn update_attachment(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
 
         let target = inner.ioport;
         let exists = inner.attached_ioport.as_ref();
@@ -57,7 +59,7 @@ impl Lifecycle for BhyvePmTimer {
         // We clear `atttached_ioport` here so that a subsequent call of
         // `update_attachement()` during instance start will force the in-kernel
         // configuration of the port to match expectations.
-        self.inner.lock().unwrap().attached_ioport = None;
+        self.inner.lock().attached_ioport = None;
     }
     fn resume(&self) {
         // If the machine was reset

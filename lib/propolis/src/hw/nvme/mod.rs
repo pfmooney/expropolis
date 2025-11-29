@@ -2,11 +2,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::prelude::*;
+
 use std::convert::TryInto;
 use std::mem::size_of;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::sync::{Arc, Weak};
 
 use crate::accessors::Guard;
 use crate::block;
@@ -705,8 +707,7 @@ impl NvmeQueues {
                 .sqs
                 .get(sqid as usize)
                 .expect("sqid should be valid")
-                .lock()
-                .unwrap(),
+                .lock(),
             queue,
         );
 
@@ -731,8 +732,7 @@ impl NvmeQueues {
                 .cqs
                 .get(cqid as usize)
                 .expect("cqid should be valid")
-                .lock()
-                .unwrap(),
+                .lock(),
             queue,
         );
 
@@ -752,7 +752,7 @@ impl NvmeQueues {
         &self,
         sqid: QueueId,
     ) -> Option<MutexGuard<'_, Option<Arc<SubQueue>>>> {
-        let guard = self.sqs.get(sqid as usize)?.lock().unwrap();
+        let guard = self.sqs.get(sqid as usize)?.lock();
         guard.is_some().then_some(guard)
     }
 
@@ -764,7 +764,7 @@ impl NvmeQueues {
         &self,
         cqid: QueueId,
     ) -> Option<MutexGuard<'_, Option<Arc<CompQueue>>>> {
-        let guard = self.cqs.get(cqid as usize)?.lock().unwrap();
+        let guard = self.cqs.get(cqid as usize)?.lock();
         guard.is_some().then_some(guard)
     }
 }
@@ -918,7 +918,7 @@ impl PciNvme {
             let this = self_weak.clone();
             block_attach.on_attach(Box::new(move |info| {
                 if let Some(this) = Weak::upgrade(&this) {
-                    this.state.lock().unwrap().update_block_info(info);
+                    this.state.lock().update_block_info(info);
                 }
             }));
 
@@ -939,7 +939,7 @@ impl PciNvme {
 
     /// Service a write to the NVMe Controller Configuration from the VM
     fn ctrlr_cfg_write(&self, new: Configuration) -> Result<(), NvmeError> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
 
         // Propogate any CC changes first
         if state.ctrl.cc != new {
@@ -990,7 +990,7 @@ impl PciNvme {
     ) -> Result<(), NvmeError> {
         match id {
             CtrlrReg::CtrlrCaps => {
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock();
                 ro.write_u64(state.ctrl.cap.0);
             }
             CtrlrReg::Version => {
@@ -1003,27 +1003,27 @@ impl PciNvme {
             }
 
             CtrlrReg::CtrlrCfg => {
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock();
                 ro.write_u32(state.ctrl.cc.0);
             }
             CtrlrReg::CtrlrStatus => {
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock();
                 ro.write_u32(state.ctrl.csts.0);
             }
             CtrlrReg::AdminQueueAttr => {
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock();
                 if !state.ctrl.cc.enabled() {
                     ro.write_u32(state.ctrl.aqa.0);
                 }
             }
             CtrlrReg::AdminSubQAddr => {
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock();
                 if !state.ctrl.cc.enabled() {
                     ro.write_u64(state.ctrl.admin_sq_base);
                 }
             }
             CtrlrReg::AdminCompQAddr => {
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock();
                 if !state.ctrl.cc.enabled() {
                     ro.write_u64(state.ctrl.admin_cq_base);
                 }
@@ -1064,19 +1064,19 @@ impl PciNvme {
                 self.ctrlr_cfg_write(Configuration(wo.read_u32()))?;
             }
             CtrlrReg::AdminQueueAttr => {
-                let mut state = self.state.lock().unwrap();
+                let mut state = self.state.lock();
                 if !state.ctrl.cc.enabled() {
                     state.ctrl.aqa = AdminQueueAttrs(wo.read_u32());
                 }
             }
             CtrlrReg::AdminSubQAddr => {
-                let mut state = self.state.lock().unwrap();
+                let mut state = self.state.lock();
                 if !state.ctrl.cc.enabled() {
                     state.ctrl.admin_sq_base = wo.read_u64() & PAGE_MASK as u64;
                 }
             }
             CtrlrReg::AdminCompQAddr => {
-                let mut state = self.state.lock().unwrap();
+                let mut state = self.state.lock();
                 if !state.ctrl.cc.enabled() {
                     state.ctrl.admin_cq_base = wo.read_u64() & PAGE_MASK as u64;
                 }
@@ -1086,7 +1086,7 @@ impl PciNvme {
                 // 32-bit register but ignore reserved top 16-bits
                 let val = wo.read_u32() as u16;
                 probes::nvme_doorbell_admin_sq!(|| val);
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock();
 
                 if !state.ctrl.cc.enabled() {
                     slog::warn!(
@@ -1108,7 +1108,7 @@ impl PciNvme {
                 // 32-bit register but ignore reserved top 16-bits
                 let val = wo.read_u32() as u16;
                 probes::nvme_doorbell_admin_cq!(|| val);
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock();
 
                 if !state.ctrl.cc.enabled() {
                     slog::warn!(
@@ -1391,7 +1391,7 @@ impl pci::Device for PciNvme {
     fn attach(&self) {
         // TODO: Update the controller logic to reach out to `pci_state` to get
         // access to the MSIX handle, rather than caching it internally
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         state.msix_hdl = self.pci_state.msix_hdl();
         assert!(state.msix_hdl.is_some());
     }
@@ -1407,7 +1407,7 @@ impl MigrateMulti for PciNvme {
         output: &mut PayloadOutputs,
         ctx: &MigrateCtx,
     ) -> Result<(), MigrateStateError> {
-        let ctrl = self.state.lock().unwrap();
+        let ctrl = self.state.lock();
         output.push(ctrl.export().into())?;
         drop(ctrl);
 
@@ -1423,7 +1423,7 @@ impl MigrateMulti for PciNvme {
     ) -> Result<(), MigrateStateError> {
         let input: migrate::NvmeCtrlV1 = offer.take()?;
 
-        let mut ctrl = self.state.lock().unwrap();
+        let mut ctrl = self.state.lock();
         ctrl.import(input, self)?;
         drop(ctrl);
 
@@ -1439,7 +1439,7 @@ impl Lifecycle for PciNvme {
     }
 
     fn reset(&self) {
-        let mut ctrl = self.state.lock().unwrap();
+        let mut ctrl = self.state.lock();
         ctrl.reset(self);
         self.pci_state.reset(self);
     }

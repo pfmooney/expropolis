@@ -2,8 +2,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::prelude::*;
+
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, };
 
 use crate::common::*;
 use crate::hw::bhyve::{
@@ -48,7 +50,7 @@ impl LNKPin {
         Self { inner: Mutex::new(LNKPinInner { asserted: false, pin: None }) }
     }
     fn reassign(&self, new_pin: Option<LegacyPin>) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         if let Some(old_pin) = inner.pin.as_ref() {
             if inner.asserted {
                 old_pin.deassert()
@@ -65,31 +67,31 @@ impl LNKPin {
 }
 impl IntrPin for LNKPin {
     fn assert(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         inner.asserted = true;
         if let Some(pin) = inner.pin.as_ref() {
             pin.assert();
         }
     }
     fn deassert(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         inner.asserted = false;
         if let Some(pin) = inner.pin.as_ref() {
             pin.deassert();
         }
     }
     fn pulse(&self) {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock();
         if let Some(pin) = inner.pin.as_ref() {
             pin.pulse();
         }
     }
     fn is_asserted(&self) -> bool {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock();
         inner.asserted
     }
     fn import_state(&self, is_asserted: bool) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         inner.asserted = is_asserted;
         if let Some(pin) = inner.pin.as_ref() {
             pin.import_state(is_asserted);
@@ -413,7 +415,7 @@ impl Piix3Lpc {
     fn write_pir(&self, idx: usize, val: u8) {
         assert!(idx < PIR_LEN);
 
-        let mut regs = self.reg_pir.lock().unwrap();
+        let mut regs = self.reg_pir.lock();
         if regs[idx] != val {
             let disabled = (val & PIR_MASK_DISABLE) != 0;
             let irq = val & PIR_MASK_IRQ;
@@ -463,7 +465,7 @@ impl pci::Device for Piix3Lpc {
         match rwo {
             RWOp::Read(ro) => {
                 let off = ro.offset();
-                let reg = self.reg_pir.lock().unwrap();
+                let reg = self.reg_pir.lock();
                 ro.write_bytes(&reg[off..(off + ro.len())]);
             }
             RWOp::Write(wo) => {
@@ -492,7 +494,7 @@ impl MigrateMulti for Piix3Lpc {
         output: &mut PayloadOutputs,
         ctx: &MigrateCtx,
     ) -> Result<(), MigrateStateError> {
-        let pir = self.reg_pir.lock().unwrap();
+        let pir = self.reg_pir.lock();
         output.push(
             migrate::Piix3LpcV1 {
                 pir_regs: *pir,
@@ -521,7 +523,7 @@ impl MigrateMulti for Piix3Lpc {
         // The device is paused during import. Acquiring the PIR lock will
         // add an implicit barrier, so relaxed ordering is OK here.
         self.post_code.store(input.post_code, Ordering::Relaxed);
-        *self.reg_pir.lock().unwrap() = input.pir_regs;
+        *self.reg_pir.lock() = input.pir_regs;
 
         MigrateMulti::import(&self.pci_state, offer, ctx)?;
 
@@ -846,7 +848,7 @@ impl Piix3PM {
                 ro.write_u8(0x1);
             }
             PmCfg::PmBase => {
-                let regs = self.regs.lock().unwrap();
+                let regs = self.regs.lock();
 
                 // LSB hardwired to 1 to indicate PMBase in IO space
                 ro.write_u32(u32::from(regs.pm_base) | 0x1);
@@ -896,7 +898,7 @@ impl Piix3PM {
             "offset" => _wo.offset(), "register" => ?id);
     }
     fn pmreg_read(&self, id: &PmReg, ro: &mut ReadOp) {
-        let regs = &self.regs.lock().unwrap();
+        let regs = &self.regs.lock();
         match id {
             PmReg::PmSts => {
                 ro.write_u16(regs.pm_status.bits());
@@ -932,7 +934,7 @@ impl Piix3PM {
         }
     }
     fn pmreg_write(&self, id: &PmReg, wo: &mut WriteOp) {
-        let mut regs = self.regs.lock().unwrap();
+        let mut regs = self.regs.lock();
         match id {
             PmReg::PmSts => {
                 let val = PmSts::from_bits_truncate(wo.read_u16());
@@ -998,7 +1000,7 @@ impl Lifecycle for Piix3PM {
         // Reset PM-specific registers.  If/when modifications to `pm_base` are
         // allowed, it will need to be more cognizant of the state inside the
         // BhyvePmTimer device.
-        self.regs.lock().unwrap().reset();
+        self.regs.lock().reset();
 
         self.pmtimer.reset();
     }
@@ -1018,7 +1020,7 @@ impl MigrateMulti for Piix3PM {
         output: &mut PayloadOutputs,
         ctx: &MigrateCtx,
     ) -> Result<(), MigrateStateError> {
-        let regs = self.regs.lock().unwrap();
+        let regs = self.regs.lock();
         output.push(Into::<migrate::Piix3PmV1>::into(*regs).into())?;
 
         MigrateMulti::export(&self.pci_state, output, ctx)?;
@@ -1036,7 +1038,7 @@ impl MigrateMulti for Piix3PM {
         let data: migrate::Piix3PmV1 = offer.take()?;
         let xlated_regs: PMRegs = data.try_into()?;
 
-        *self.regs.lock().unwrap() = xlated_regs;
+        *self.regs.lock() = xlated_regs;
 
         MigrateMulti::import(&self.pci_state, offer, ctx)?;
 

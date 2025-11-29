@@ -2,12 +2,14 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::prelude::*;
+
 use std::fs::{metadata, File, OpenOptions};
 use std::io::{Error, ErrorKind, Result};
 use std::num::NonZeroUsize;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::block::{self, SyncWorkerCtx, WorkerId};
 use crate::tasks::ThreadGroup;
@@ -132,7 +134,7 @@ impl SharedState {
             // Do not needlessly toggle the cache on a read-only disk
             return;
         }
-        if let Some(state) = self.wce_state.lock().unwrap().as_mut() {
+        if let Some(state) = self.wce_state.lock().as_mut() {
             if state.current != enabled {
                 if let Some(new_wce) = dkioc::set_wce(&self.fp, enabled).ok() {
                     state.current = new_wce;
@@ -145,7 +147,7 @@ impl Drop for SharedState {
     fn drop(&mut self) {
         // Attempt to return WCE state on the device to how it was when we
         // initially opened it.
-        if let Some(state) = self.wce_state.get_mut().unwrap().as_mut() {
+        if let Some(state) = self.wce_state.get_mut().as_mut() {
             if state.current != state.initial {
                 let _ = dkioc::set_wce(&self.fp, state.initial);
             }

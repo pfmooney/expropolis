@@ -4,11 +4,13 @@
 
 #![cfg_attr(not(target_os = "illumos"), allow(dead_code, unused_imports))]
 
+use crate::prelude::*;
+
 use std::io::{self, Error, ErrorKind};
 use std::num::NonZeroU16;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, Condvar, Mutex, Weak};
+use std::sync::{Arc, Condvar, Weak};
 
 use crate::common::*;
 use crate::hw::pci;
@@ -223,7 +225,7 @@ impl PciVirtioViona {
         let this = Arc::new(this);
 
         // Spawn the interrupt poller
-        let mut inner = this.inner.lock().unwrap();
+        let mut inner = this.inner.lock();
         inner.poller =
             Some(Poller::spawn(this.hdl.as_raw_fd(), Arc::downgrade(&this))?);
         drop(inner);
@@ -270,7 +272,7 @@ impl PciVirtioViona {
     /// Pause the associated virtqueues and sync any in-kernel state for them
     /// into the userspace representation.
     fn queues_sync(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         for vq in self.virtio_state.queues.iter() {
             if !vq.live.load(Ordering::Acquire) {
                 continue;
@@ -312,7 +314,7 @@ impl PciVirtioViona {
     }
 
     fn queues_restart(&self) -> Result<(), ()> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         let mut res = Ok(());
         for vq in self.virtio_state.queues.iter() {
             let rs = inner.for_vq(vq);
@@ -360,7 +362,7 @@ impl PciVirtioViona {
 
     /// Make sure all in-kernel virtqueue processing is stopped
     fn queues_kill(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         for vq in self.virtio_state.queues.iter() {
             let rs = inner.for_vq(vq);
             match *rs {
@@ -382,12 +384,12 @@ impl PciVirtioViona {
     }
 
     fn poller_start(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         let poller = inner.poller.as_mut().expect("poller should be spawned");
         let _ = poller.sender.send(TargetState::Run);
     }
     fn poller_stop(&self, should_exit: bool) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         let wait_state = if should_exit {
             let poller = inner.poller.take().expect("poller should be spawned");
             let _ = poller.sender.send(TargetState::Exit);
@@ -412,7 +414,7 @@ impl PciVirtioViona {
         } else {
             // If all is well with the queue restart, attempt to wire up the
             // notification ioport again.
-            let state = self.inner.lock().unwrap();
+            let state = self.inner.lock();
             let _ = self.hdl.set_notify_iop(state.iop_state);
         }
     }
@@ -444,7 +446,7 @@ impl VirtioDevice for PciVirtioViona {
     }
 
     fn queue_notify(&self, vq: &Arc<VirtQueue>) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         let rs = inner.for_vq(vq);
         match rs {
             VRingState::Ready | VRingState::Run => {
@@ -462,7 +464,7 @@ impl VirtioDevice for PciVirtioViona {
         vq: &Arc<VirtQueue>,
         change: VqChange,
     ) -> Result<(), ()> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         let rs = inner.for_vq(vq);
 
         match change {
@@ -576,7 +578,7 @@ impl PciVirtio for PciVirtioViona {
         &self.pci_state
     }
     fn notify_port_update(&self, port: Option<NonZeroU16>) {
-        let mut state = self.inner.lock().unwrap();
+        let mut state = self.inner.lock();
         state.iop_state = port;
 
         // The notification ioport for the device can change due to guest
@@ -829,18 +831,18 @@ struct PollerState {
 }
 impl PollerState {
     fn wait_stopped(&self) {
-        let guard = self.running.lock().unwrap();
+        let guard = self.running.lock();
         let _res = self.cv.wait_while(guard, |g| *g).unwrap();
     }
     fn set_stopped(&self) {
-        let mut guard = self.running.lock().unwrap();
+        let mut guard = self.running.lock();
         if *guard {
             *guard = false;
             self.cv.notify_all();
         }
     }
     fn set_running(&self) {
-        let mut guard = self.running.lock().unwrap();
+        let mut guard = self.running.lock();
         *guard = true;
     }
 }

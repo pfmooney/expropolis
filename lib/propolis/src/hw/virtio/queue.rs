@@ -2,12 +2,14 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::prelude::*;
+
 use std::mem;
 use std::num::{NonZeroU16, Wrapping};
 use std::ops::Index;
 use std::slice::SliceIndex;
 use std::sync::atomic::{fence, AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 
 use super::bits::*;
 use super::probes;
@@ -220,8 +222,8 @@ impl VirtQueue {
         }
     }
     pub(super) fn reset(&self) {
-        let mut avail = self.avail.lock().unwrap();
-        let mut used = self.used.lock().unwrap();
+        let mut avail = self.avail.lock();
+        let mut used = self.used.lock();
 
         // XXX verify no outstanding chains
         avail.reset();
@@ -252,16 +254,16 @@ impl VirtQueue {
         let used_addr = qalign(avail_addr + avail_len as u64, LEGACY_QALIGN);
         let _used_len = mem::size_of::<VqUsed>() * size + 2 * 3;
 
-        let mut avail = self.avail.lock().unwrap();
-        let mut used = self.used.lock().unwrap();
+        let mut avail = self.avail.lock();
+        let mut used = self.used.lock();
         avail.map_split(desc_addr, avail_addr);
         used.map_split(used_addr);
         avail.valid = true;
         used.valid = true;
     }
     pub fn get_state(&self) -> Info {
-        let avail = self.avail.lock().unwrap();
-        let used = self.used.lock().unwrap();
+        let avail = self.avail.lock();
+        let used = self.used.lock();
 
         Info {
             mapping: MapInfo {
@@ -275,8 +277,8 @@ impl VirtQueue {
         }
     }
     pub fn set_state(&self, info: &Info) {
-        let mut avail = self.avail.lock().unwrap();
-        let mut used = self.used.lock().unwrap();
+        let mut avail = self.avail.lock();
+        let mut used = self.used.lock();
 
         avail.map_split(info.mapping.desc_addr, info.mapping.avail_addr);
         used.map_split(info.mapping.used_addr);
@@ -291,7 +293,7 @@ impl VirtQueue {
         mem: &MemCtx,
     ) -> Option<(u16, u32)> {
         assert!(chain.idx.is_none());
-        let mut avail = self.avail.lock().unwrap();
+        let mut avail = self.avail.lock();
         let req = avail.read_next_avail(self.size(), mem)?;
 
         let mut desc = avail.read_ring_descr(req.desc_idx, self.size(), mem)?;
@@ -371,7 +373,7 @@ impl VirtQueue {
     }
     pub fn push_used(&self, chain: &mut Chain, mem: &MemCtx) {
         assert!(chain.idx.is_some());
-        let mut used = self.used.lock().unwrap();
+        let mut used = self.used.lock();
         let id = mem::replace(&mut chain.idx, None).unwrap();
         // XXX: for now, just go off of the write stats
         let len = chain.write_stat.bytes - chain.write_stat.bytes_remain;
@@ -387,19 +389,19 @@ impl VirtQueue {
 
     /// Set the backing interrupt resource for VQ
     pub(super) fn set_intr(&self, intr: Box<dyn VirtioIntr>) {
-        let mut used = self.used.lock().unwrap();
+        let mut used = self.used.lock();
         used.interrupt = Some(intr)
     }
 
     /// Read the interrupt configuration for the `Used` ring
     pub(super) fn read_intr(&self) -> Option<VqIntr> {
-        let used = self.used.lock().unwrap();
+        let used = self.used.lock();
         used.interrupt.as_ref().map(|x| x.read())
     }
 
     /// Send an interrupt for VQ
     pub(super) fn send_intr(&self, mem: &MemCtx) {
-        let used = self.used.lock().unwrap();
+        let used = self.used.lock();
         if !used.intr_supressed(mem) {
             if let Some(intr) = used.interrupt.as_ref() {
                 intr.notify();
@@ -408,8 +410,8 @@ impl VirtQueue {
     }
 
     pub fn export(&self) -> migrate::VirtQueueV1 {
-        let avail = self.avail.lock().unwrap();
-        let used = self.used.lock().unwrap();
+        let avail = self.avail.lock();
+        let used = self.used.lock();
 
         migrate::VirtQueueV1 {
             id: self.id,
@@ -431,8 +433,8 @@ impl VirtQueue {
         &self,
         state: migrate::VirtQueueV1,
     ) -> Result<(), MigrateStateError> {
-        let mut avail = self.avail.lock().unwrap();
-        let mut used = self.used.lock().unwrap();
+        let mut avail = self.avail.lock();
+        let mut used = self.used.lock();
 
         if self.id != state.id {
             return Err(MigrateStateError::ImportFailed(format!(

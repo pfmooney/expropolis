@@ -2,7 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use std::sync::{Arc, Mutex};
+use crate::prelude::*;
+
+use std::sync::Arc;
 
 use super::uart16550::{migrate, Uart};
 use crate::chardev::*;
@@ -63,7 +65,7 @@ impl LpcUart {
     fn pio_rw(&self, rwo: RWOp) {
         assert!(rwo.offset() < REGISTER_LEN);
         assert!(rwo.len() != 0);
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         let readable_before = state.uart.is_readable();
         let writable_before = state.uart.is_writable();
 
@@ -96,7 +98,7 @@ impl LpcUart {
         }
     }
     fn reset(&self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         state.uart.reset();
         state.sync_intr_pin();
     }
@@ -104,7 +106,7 @@ impl LpcUart {
 
 impl Sink for LpcUart {
     fn write(&self, data: u8) -> bool {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
 
         if state.paused {
             return false;
@@ -120,7 +122,7 @@ impl Sink for LpcUart {
 }
 impl Source for LpcUart {
     fn read(&self) -> Option<u8> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
 
         if state.paused {
             return None;
@@ -131,7 +133,7 @@ impl Source for LpcUart {
         res
     }
     fn discard(&self, count: usize) -> usize {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         let mut discarded = 0;
         while discarded < count {
             if let Some(_val) = state.uart.data_read() {
@@ -147,7 +149,7 @@ impl Source for LpcUart {
         self.notify_readable.set(f);
     }
     fn set_autodiscard(&self, active: bool) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         state.auto_discard = active;
     }
 }
@@ -164,12 +166,12 @@ impl Lifecycle for LpcUart {
     }
 
     fn pause(&self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         state.paused = true;
     }
 
     fn resume(&self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         state.paused = false;
     }
 }
@@ -178,7 +180,7 @@ impl MigrateSingle for LpcUart {
         &self,
         _ctx: &MigrateCtx,
     ) -> Result<PayloadOutput, MigrateStateError> {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
         Ok(state.uart.export().into())
     }
 
@@ -188,7 +190,7 @@ impl MigrateSingle for LpcUart {
         _ctx: &MigrateCtx,
     ) -> Result<(), MigrateStateError> {
         let data = offer.parse::<migrate::Uart16550V1>()?;
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         state.uart.import(&data)?;
         state.irq_pin.import_state(state.uart.intr_state());
         Ok(())

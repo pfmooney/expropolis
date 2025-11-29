@@ -2,9 +2,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::prelude::*;
+
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Weak};
 
 use super::bar::BarDefine;
 use super::{BarN, BusLocation, Endpoint, LintrCfg};
@@ -37,7 +39,7 @@ impl Bus {
         dev: Arc<dyn Endpoint>,
         lintr_cfg: Option<LintrCfg>,
     ) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         let (slot_state, acc_msi, acc_mem) =
             inner.attach(location, dev.clone());
 
@@ -56,7 +58,7 @@ impl Bus {
         &self,
         location: BusLocation,
     ) -> Option<Arc<dyn Endpoint>> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock();
         inner.device_at(location)
     }
 }
@@ -72,13 +74,13 @@ pub struct Attachment {
 impl Attachment {
     pub fn bar_register(&self, n: BarN, def: BarDefine, addr: u64) {
         if let Some(inner) = self.inner.upgrade() {
-            let mut guard = inner.lock().unwrap();
+            let mut guard = inner.lock();
             guard.bar_register(self.location, n, def, addr);
         }
     }
     pub fn bar_unregister(&self, n: BarN) {
         if let Some(inner) = self.inner.upgrade() {
-            let mut guard = inner.lock().unwrap();
+            let mut guard = inner.lock();
             guard.bar_unregister(self.location, n);
         }
     }
@@ -264,7 +266,7 @@ mod test {
     }
     impl Endpoint for TestDev {
         fn attach(&self, attachment: Attachment) {
-            let mut attach = self.inner.lock().unwrap();
+            let mut attach = self.inner.lock();
             attach.replace(attachment);
         }
         fn cfg_rw(&self, _op: RWOp) {}
@@ -272,7 +274,7 @@ mod test {
     }
     impl TestDev {
         fn check_multifunc(&self) -> Option<bool> {
-            self.inner.lock().unwrap().as_ref().map(Attachment::is_multifunc)
+            self.inner.lock().as_ref().map(Attachment::is_multifunc)
         }
     }
 

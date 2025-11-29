@@ -14,7 +14,9 @@
 //! that intends to implement a Hyper-V-compatible interface:
 //! <https://github.com/MicrosoftDocs/Virtualization-Documentation/blob/main/tlfs/Requirements%20for%20Implementing%20the%20Microsoft%20Hypervisor%20Interface.pdf>
 
-use std::sync::{Arc, Mutex, OnceLock};
+use crate::prelude::*;
+
+use std::sync::{Arc, OnceLock};
 
 use cpuid_utils::{CpuidIdent, CpuidSet, CpuidValues};
 use overlay::{OverlayError, OverlayKind, OverlayManager, OverlayPage};
@@ -230,7 +232,7 @@ impl HyperV {
     /// Handles a write to the HV_X64_MSR_GUEST_OS_ID register.
     fn handle_wrmsr_guest_os_id(&self, value: u64) -> WrmsrOutcome {
         probes::hyperv_wrmsr_guest_os_id!(|| value);
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
 
         // TLFS section 3.13 says that the hypercall page "becomes disabled" if
         // the guest OS ID register is cleared after the hypercall register is
@@ -259,7 +261,7 @@ impl HyperV {
             new.enabled()
         ));
 
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         let old = inner.msr_hypercall_value;
 
         // This MSR is immutable once the Locked bit is set.
@@ -385,7 +387,7 @@ impl HyperV {
     }
 
     fn handle_wrmsr_reference_tsc(&self, value: u64) -> WrmsrOutcome {
-        self.inner.lock().unwrap().handle_wrmsr_reference_tsc(value)
+        self.inner.lock().handle_wrmsr_reference_tsc(value)
     }
 }
 
@@ -439,10 +441,10 @@ impl super::Enlightenment for HyperV {
     fn rdmsr(&self, vcpu: VcpuId, msr: MsrId) -> RdmsrOutcome {
         match msr.0 {
             HV_X64_MSR_GUEST_OS_ID => RdmsrOutcome::Handled(
-                self.inner.lock().unwrap().msr_guest_os_id_value,
+                self.inner.lock().msr_guest_os_id_value,
             ),
             HV_X64_MSR_HYPERCALL => RdmsrOutcome::Handled(
-                self.inner.lock().unwrap().msr_hypercall_value.0,
+                self.inner.lock().msr_hypercall_value.0,
             ),
             HV_X64_MSR_VP_INDEX => {
                 let id: u32 = vcpu.into();
@@ -450,7 +452,7 @@ impl super::Enlightenment for HyperV {
             }
             HV_X64_MSR_TIME_REF_COUNT => self.handle_rdmsr_time_ref_count(),
             HV_X64_MSR_REFERENCE_TSC => {
-                self.inner.lock().unwrap().handle_rdmsr_reference_tsc()
+                self.inner.lock().handle_rdmsr_reference_tsc()
             }
             _ => RdmsrOutcome::NotHandled,
         }
@@ -471,7 +473,7 @@ impl super::Enlightenment for HyperV {
     fn attach(&self, mem_acc: &MemAccessor, vmm_hdl: Arc<VmmHdl>) {
         mem_acc.adopt(&self.acc_mem, Some(TYPE_NAME.to_owned()));
 
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         inner.overlay_manager.attach(&self.acc_mem);
 
         if let ReferenceTsc::Uninitialized = inner.reference_tsc {
@@ -505,7 +507,7 @@ impl Lifecycle for HyperV {
     }
 
     fn pause(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
 
         // Remove all active overlays from service. If the VM migrates, this
         // allows the original guest pages that sit underneath those overlays to
@@ -529,7 +531,7 @@ impl Lifecycle for HyperV {
     }
 
     fn resume(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
 
         assert!(inner.overlay_manager.is_empty());
 
@@ -564,7 +566,7 @@ impl Lifecycle for HyperV {
     }
 
     fn reset(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
 
         // The overlay manager shouldn't have any active overlays, because
         // `pause` drops them all, and state drivers are required to call
@@ -575,7 +577,7 @@ impl Lifecycle for HyperV {
     }
 
     fn halt(&self) {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock();
         assert!(inner.overlay_manager.is_empty());
     }
 
@@ -589,7 +591,7 @@ impl MigrateSingle for HyperV {
         &self,
         _ctx: &MigrateCtx,
     ) -> Result<PayloadOutput, MigrateStateError> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock();
         Ok(migrate::HyperVEnlightenmentV1 {
             msr_guest_os_id: inner.msr_guest_os_id_value,
             msr_hypercall: inner.msr_hypercall_value.0,
@@ -620,7 +622,7 @@ impl MigrateSingle for HyperV {
             reference_tsc,
         } = offer.parse()?;
 
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
 
         // Re-establish any overlay pages that are active in the restored MSRs.
         //

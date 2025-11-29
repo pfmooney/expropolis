@@ -2,9 +2,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::prelude::*;
+
 use std::fs::File as FsFile;
 use std::num::NonZeroUsize;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::chardev::pollers;
@@ -37,7 +39,7 @@ impl BlockingFileOutput {
     }
 
     pub fn attach(&self, source: Arc<dyn BlockingSource>) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         let fp = inner.fp.take().unwrap();
 
         self.poller.attach(source.as_ref());

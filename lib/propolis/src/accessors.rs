@@ -11,10 +11,12 @@
 //! disabled on the device, or any parent bridge in its bus hierarchy, then its
 //! contained emulation should fail any DMA accesses.
 
+use crate::prelude::*;
+
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::marker::PhantomData;
 use std::ptr::NonNull;
-use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::sync::{Arc, Weak};
 
 use crate::vmm::VmmHdl;
 
@@ -172,7 +174,7 @@ impl<T: AccessedResource> Tree<T> {
 
                 // Associate the node with this tree and resource
                 {
-                    let mut ent = node.0.lock().unwrap();
+                    let mut ent = node.0.lock();
                     ent.tree = Arc::clone(&tree_ref);
                     ent.res_leaf = self.res_root.as_ref().map(T::derive);
                 }
@@ -239,7 +241,7 @@ impl<T: AccessedResource> Tree<T> {
         {
             let node =
                 tnode.node_ref.upgrade().expect("node-to-orphan is still live");
-            let mut guard = node.0.lock().unwrap();
+            let mut guard = node.0.lock();
             guard.tree = orphan_tree.clone();
             guard.res_leaf.take();
         }
@@ -248,7 +250,7 @@ impl<T: AccessedResource> Tree<T> {
         let mut needs_moved = VecDeque::new();
         needs_moved.extend(tnode.children.iter());
 
-        let mut tguard = orphan_tree.lock().unwrap();
+        let mut tguard = orphan_tree.lock();
         tguard.root_key = Some(key);
         tguard.nodes.insert(key, tnode);
 
@@ -263,7 +265,7 @@ impl<T: AccessedResource> Tree<T> {
             // "dead" will clean itself from the existing tree and orphan its
             // subsequent progeny when given access to the tree lock.
             if let Some(node) = tnode.node_ref.upgrade() {
-                let mut ent = node.0.lock().unwrap();
+                let mut ent = node.0.lock();
                 ent.tree = orphan_tree.clone();
                 ent.res_leaf = None;
 
@@ -296,7 +298,7 @@ impl<T: AccessedResource> Tree<T> {
         // ... and invalidate all nodes too
         for tnode in self.nodes.values() {
             if let Some(node) = tnode.node_ref.upgrade() {
-                let _ = node.0.lock().unwrap().res_leaf.take();
+                let _ = node.0.lock().res_leaf.take();
             }
         }
 
@@ -365,9 +367,9 @@ impl<T: AccessedResource> Tree<T> {
         let res_leaf = res_root.as_ref().map(T::derive);
         let tree = Self::new_empty(res_root);
         let node = Node::new_root(tree.clone());
-        node.0.lock().unwrap().res_leaf = res_leaf;
+        node.0.lock().res_leaf = res_leaf;
 
-        let mut guard = tree.lock().unwrap();
+        let mut guard = tree.lock();
         let root_key = NodeKey::from(&node);
         guard.root_key = Some(root_key);
         guard.nodes.insert(root_key, TreeNode::new_root(Arc::downgrade(&node)));
@@ -427,8 +429,8 @@ impl<T: AccessedResource> Node<T> {
         &'a self,
         tree_ref: &'a TreeBackref<T>,
     ) -> Result<MutexGuard<'a, Tree<T>>, TreeBackref<T>> {
-        let guard = tree_ref.lock().unwrap();
-        let node_guard = self.0.lock().unwrap();
+        let guard = tree_ref.lock();
+        let node_guard = self.0.lock();
         if Arc::ptr_eq(tree_ref, &node_guard.tree) {
             Ok(guard)
         } else {
@@ -439,7 +441,7 @@ impl<T: AccessedResource> Node<T> {
     /// Safely acquire the lock to this entry, as well as the containing tree,
     /// respecting the ordering requirements.
     fn lock_tree<R>(&self, f: impl FnOnce(MutexGuard<'_, Tree<T>>) -> R) -> R {
-        let mut tree = self.0.lock().unwrap().tree.clone();
+        let mut tree = self.0.lock().tree.clone();
         let guard = loop {
             let new_tree = match self.try_lock_tree(&tree) {
                 Ok(tg) => break tg,
@@ -458,7 +460,7 @@ impl<T: AccessedResource> Node<T> {
     }
 
     fn guard(&self) -> Option<Guard<'_, T>> {
-        let local = self.0.lock().unwrap();
+        let local = self.0.lock();
         if let Some(leaf) = local.res_leaf.as_ref() {
             Some(Guard { inner: leaf.clone(), _pd: PhantomData })
         } else {
@@ -466,7 +468,7 @@ impl<T: AccessedResource> Node<T> {
             // Attempt to (re)derive leaf resource from root
             self.lock_tree(|tree| {
                 if let Some(root) = tree.res_root.as_ref() {
-                    let mut local = self.0.lock().unwrap();
+                    let mut local = self.0.lock();
                     let leaf = T::derive(root);
                     local.res_leaf = Some(leaf.clone());
 
@@ -482,7 +484,7 @@ impl<T: AccessedResource> Node<T> {
         let key = NodeKey::from(&*self);
         self.lock_tree(|mut guard| {
             // drop any lingering access to the resource immediately
-            let _ = self.0.lock().unwrap().res_leaf.take();
+            let _ = self.0.lock().res_leaf.take();
 
             // Since we hold the Tree lock (thus eliminating the chance of any
             // racing adopt/orphan activity to be manipulating the refcount on

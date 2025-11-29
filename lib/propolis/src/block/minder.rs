@@ -4,12 +4,14 @@
 
 //! Mechanisms required to implement a block device
 
+use crate::prelude::*;
+
 use std::any::Any;
 use std::borrow::Borrow;
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Weak};
 use std::task::{Context, Poll};
 use std::time::Instant;
 
@@ -188,7 +190,7 @@ impl QueueMinder {
         //
         // So, do *not* `assert_eq!(Arc::strong_count(&self), 1);`.
 
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
 
         // A minder can only be destroyed once. To destroy it more than once
         // would imply it was dissociated from a queue a second time, and for
@@ -256,10 +258,10 @@ impl QueueMinder {
     /// recorded so it can be notified if/when the guest notifies this queue
     /// that more requests are available.
     pub fn next_req(&self, wid: WorkerId) -> Option<DeviceRequest> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         if state.destroyed {
             return None;
-        }
+        };
         if state.paused {
             state.notify_workers.set(wid);
             return None;
@@ -310,7 +312,7 @@ impl QueueMinder {
 
     /// Process a completion for an in-flight IO request on this queue.
     pub fn complete(&self, id: ReqId, result: block::Result) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         let Some(ent) = state.in_flight.remove(&id) else {
             // If we lost state for this I/O, we better have gotten here because
             // the controller was reset and dissociated all queues. In that case
@@ -384,7 +386,7 @@ impl QueueMinder {
         // reliably accurate accurate signal of when the device has no more
         // in-flight requests.
         if is_last_req {
-            let mut state = self.state.lock().unwrap();
+            let mut state = self.state.lock();
             state.processing_last -= 1;
             if state.in_flight.is_empty() && state.processing_last == 0 {
                 self.notify.notify_waiters();
@@ -400,7 +402,7 @@ impl QueueMinder {
     /// [`add_notifications`]. Failure to do so will result in idle workers
     /// never being woken for future work.
     pub(in crate::block) fn take_notifications(&self) -> Option<Bitmap> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         if state.paused {
             state.notify_workers = Bitmap::ALL;
             None
@@ -416,7 +418,7 @@ impl QueueMinder {
     /// from an ealier [`take_notifications`]. Using other bit patterns may
     /// result in wakeups to out-of-range worker IDs and subsequent panic.
     pub(in crate::block) fn add_notifications(&self, worker_ids: Bitmap) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
 
         state.notify_workers.set_all(worker_ids);
     }
@@ -428,17 +430,17 @@ impl QueueMinder {
         &self,
         consumer: Arc<dyn MetricConsumer>,
     ) {
-        self.state.lock().unwrap().metric_consumer = Some(consumer);
+        self.state.lock().metric_consumer = Some(consumer);
     }
 
     pub(crate) fn pause(&self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         state.paused = true;
         self.notify.notify_waiters();
     }
 
     pub(crate) fn resume(&self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         state.paused = false;
         self.notify.notify_waiters();
     }
@@ -464,7 +466,7 @@ impl Future for NoneInFlight<'_> {
         let mut this = self.project();
 
         loop {
-            let state = this.minder.state.lock().unwrap();
+            let state = this.minder.state.lock();
             if state.in_flight.is_empty() && state.processing_last == 0 {
                 return Poll::Ready(());
             }

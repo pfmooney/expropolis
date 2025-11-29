@@ -2,10 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::prelude::*;
+
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug};
 use std::sync::atomic::{fence, AtomicU16, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::sync::{Arc, Weak};
 
 use super::bits::{CompletionQueueEntry, SubmissionQueueEntry};
 use super::cmds::Completion;
@@ -133,7 +135,7 @@ impl<QS> QueueState<QS> {
         QueueGuard {
             size: &self.size,
             acc_mem: &self.acc_mem,
-            state: self.inner.lock().unwrap(),
+            state: self.inner.lock(),
         }
     }
 }
@@ -571,7 +573,7 @@ pub struct SubQueue {
 impl Drop for SubQueue {
     fn drop(&mut self) {
         // Remove the CQ-SQ link
-        let mut cq_sqs = self.cq.sqs.lock().unwrap();
+        let mut cq_sqs = self.cq.sqs.lock();
         cq_sqs.remove(&self.id).unwrap();
     }
 }
@@ -597,7 +599,7 @@ impl SubQueue {
 
         use std::collections::hash_map::Entry;
         // Associate this SQ with the given CQ
-        let mut cq_sqs = sq.cq.sqs.lock().unwrap();
+        let mut cq_sqs = sq.cq.sqs.lock();
         match cq_sqs.entry(id) {
             Entry::Occupied(_) => {
                 Err(QueueCreateErr::SubQueueIdAlreadyExists(id))
@@ -704,7 +706,7 @@ impl SubQueue {
     }
 
     pub(super) fn export(&self) -> migrate::NvmeSubQueueV1 {
-        let inner = self.state.inner.lock().unwrap();
+        let inner = self.state.inner.lock();
         migrate::NvmeSubQueueV1 {
             id: self.id,
             size: self.state.size,
@@ -725,7 +727,7 @@ impl SubQueue {
         assert_eq!(self.base.0, state.base);
         assert_eq!(self.state.size, state.size);
 
-        let mut inner = self.state.inner.lock().unwrap();
+        let mut inner = self.state.inner.lock();
         inner.head = state.head;
         inner.tail = state.tail;
 
@@ -817,7 +819,7 @@ impl CompQueue {
 
     /// Returns the number of SQs associated with this Completion Queue.
     pub fn associated_sqs(&self) -> usize {
-        let sqs = self.sqs.lock().unwrap();
+        let sqs = self.sqs.lock();
         sqs.len()
     }
 

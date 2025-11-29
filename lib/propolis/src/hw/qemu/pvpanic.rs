@@ -2,7 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use std::sync::{Arc, Mutex};
+use crate::prelude::*;
+
+use std::sync::Arc;
 
 use crate::common::*;
 use crate::pio::{PioBus, PioFn};
@@ -70,7 +72,7 @@ impl QemuPvpanic {
 
     /// Returns the current panic counts reported by the guest.
     pub fn panic_counts(&self) -> PanicCounts {
-        *self.counts.lock().unwrap()
+        *self.counts.lock()
     }
 
     fn pio_rw(&self, rwo: RWOp) {
@@ -90,7 +92,7 @@ impl QemuPvpanic {
                     "guest_handled" => guest_handled,
                 );
 
-                let mut counts = self.counts.lock().unwrap();
+                let mut counts = self.counts.lock();
 
                 if host_handled {
                     counts.host_handled += 1;

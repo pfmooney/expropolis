@@ -2,11 +2,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::prelude::*;
+
 use std::{
     collections::BTreeMap,
     fs::{self, File, OpenOptions},
     io::{Result, Write},
-    sync::{Arc, Mutex},
+    sync::Arc,
     thread::{sleep, spawn},
     time::Duration,
 };
@@ -268,7 +270,7 @@ impl Lifecycle for SoftNpu {
     }
 
     fn start(&self) -> anyhow::Result<()> {
-        let mut booted = self.booted.lock().unwrap();
+        let mut booted = self.booted.lock();
         if *booted {
             return Ok(());
         }
@@ -507,7 +509,7 @@ impl PacketHandler {
 
             // TODO pipeline should not need to be mutable for packet handling?
             let pkt = packet_in::new(&msg[..n]);
-            let mut p = pipeline.lock().unwrap();
+            let mut p = pipeline.lock();
             let pl = match &mut *p {
                 Some(ref mut pl) => &mut pl.1,
                 None => continue, // no program is loaded
@@ -672,7 +674,7 @@ fn handle_management_message(
     radix: usize,
     log: Logger,
 ) {
-    let mut pl_opt = pipeline.lock().unwrap();
+    let mut pl_opt = pipeline.lock();
 
     match msg {
         ManagementRequest::TableAdd(tm) => {
@@ -906,7 +908,7 @@ impl SoftNpuP9Handler {
         radix: u16,
         log: Logger,
     ) {
-        let mut pl = pipeline.lock().unwrap();
+        let mut pl = pipeline.lock();
         // drop anything that may already be loaded before attempting a dlopen
         if let Some((lib, pipe)) = pl.take() {
             // This order is very important, if the lib gets dropped before the

@@ -2,12 +2,14 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::prelude::*;
+
 use std::fs;
 use std::io::{ErrorKind, Result};
 use std::num::NonZeroUsize;
 use std::os::unix::net::UnixListener as StdUnixListener;
 use std::path::Path;
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar};
 use std::time::Duration;
 
 use crate::chardev::{pollers, Sink, Source};
@@ -77,13 +79,13 @@ impl UDSock {
     }
 
     fn notify_connected(&self, addr: Option<SocketAddr>) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         inner.client = addr;
         self.cv.notify_all();
     }
 
     pub fn wait_for_connect(&self) {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock();
         if inner.client.is_some() {
             return;
         }
@@ -92,7 +94,7 @@ impl UDSock {
 
     #[cfg(test)]
     pub fn wait_for_disconnect(&self) {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock();
         if inner.client.is_none() {
             return;
         }
@@ -105,7 +107,7 @@ impl UDSock {
         source: Arc<dyn Source>,
     ) -> Result<()> {
         let lsock = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock();
             let sock = inner.std_sock.take().unwrap();
             drop(inner);
             sock

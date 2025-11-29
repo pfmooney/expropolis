@@ -2,8 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::prelude::*;
+
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
 
 mod file_out;
 pub mod pollers;
@@ -54,13 +55,13 @@ impl<T: ?Sized> NotifierCell<T> {
 }
 impl NotifierCell<dyn Sink> {
     pub fn set(&self, f: Option<SinkNotifier>) {
-        let mut guard = self.notifier.lock().unwrap();
+        let mut guard = self.notifier.lock();
         self.is_set.store(f.is_some(), Ordering::Release);
         *guard = f;
     }
     pub fn notify(&self, sink: &dyn Sink) {
         if self.is_set.load(Ordering::Acquire) {
-            let guard = self.notifier.lock().unwrap();
+            let guard = self.notifier.lock();
             if let Some(f) = guard.as_ref() {
                 f(sink);
             }
@@ -69,13 +70,13 @@ impl NotifierCell<dyn Sink> {
 }
 impl NotifierCell<dyn Source> {
     pub fn set(&self, f: Option<SourceNotifier>) {
-        let mut guard = self.notifier.lock().unwrap();
+        let mut guard = self.notifier.lock();
         self.is_set.store(f.is_some(), Ordering::Release);
         *guard = f;
     }
     pub fn notify(&self, source: &dyn Source) {
         if self.is_set.load(Ordering::Acquire) {
-            let guard = self.notifier.lock().unwrap();
+            let guard = self.notifier.lock();
             if let Some(f) = guard.as_ref() {
                 f(source);
             }
@@ -92,13 +93,13 @@ impl ConsumerCell {
         Self { is_set: AtomicBool::new(false), consumer: Mutex::new(None) }
     }
     pub fn set(&self, f: Option<BlockingSourceConsumer>) {
-        let mut guard = self.consumer.lock().unwrap();
+        let mut guard = self.consumer.lock();
         self.is_set.store(f.is_some(), Ordering::Release);
         *guard = f;
     }
     pub fn consume(&self, data: &[u8]) {
         if self.is_set.load(Ordering::Acquire) {
-            let guard = self.consumer.lock().unwrap();
+            let guard = self.consumer.lock();
             if let Some(f) = guard.as_ref() {
                 f(data);
             }

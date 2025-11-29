@@ -2,10 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::prelude::*;
+
 use std::any::Any;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
+use std::sync::{Arc, Condvar, Weak};
 use std::task::{Context, Poll, Waker};
 use std::thread;
 
@@ -91,7 +93,7 @@ impl Inner {
             Some(notify) if !guard.is_held => {
                 drop(guard);
                 notify();
-                self.ctrl.lock().unwrap()
+                self.ctrl.lock()
             }
             _ => guard,
         }
@@ -153,7 +155,7 @@ impl TaskHdl {
 
     /// Check for a pending control event for this task.
     pub fn pending_event(&self) -> Option<Event> {
-        let ctrl = self.0.ctrl.lock().unwrap();
+        let ctrl = self.0.ctrl.lock();
         if ctrl.should_exit {
             Some(Event::Exit)
         } else if ctrl.should_hold {
@@ -166,7 +168,7 @@ impl TaskHdl {
     /// Enter this task into a `held` state.  It will return when the task has
     /// been requested to exit or when no request for a hold remains.
     pub fn hold(&self) {
-        let mut guard = self.0.ctrl.lock().unwrap();
+        let mut guard = self.0.ctrl.lock();
         if guard.should_exit || !guard.should_hold {
             return;
         }
@@ -183,7 +185,7 @@ impl TaskHdl {
     /// requested such a hold.  Like [TaskHdl::hold], it will return when an
     /// exit is requested, or the requested hold is cleared.
     pub fn force_hold(&self) {
-        let mut guard = self.0.ctrl.lock().unwrap();
+        let mut guard = self.0.ctrl.lock();
         if guard.should_exit {
             return;
         }
@@ -232,7 +234,7 @@ impl Future for Held<'_> {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Self::Output> {
-        let mut guard = self.hdl.0.ctrl.lock().unwrap();
+        let mut guard = self.hdl.0.ctrl.lock();
         if guard.should_exit || !guard.should_hold {
             if self.held {
                 self.hdl.0.set_unheld(&mut guard);
@@ -251,7 +253,7 @@ impl Future for Held<'_> {
 impl Drop for Held<'_> {
     fn drop(&mut self) {
         if self.held {
-            let mut guard = self.hdl.0.ctrl.lock().unwrap();
+            let mut guard = self.hdl.0.ctrl.lock();
             self.hdl.0.set_unheld(&mut guard);
         }
     }
@@ -273,7 +275,7 @@ impl Future for GetEvent<'_> {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Self::Output> {
-        let mut guard = self.hdl.0.ctrl.lock().unwrap();
+        let mut guard = self.hdl.0.ctrl.lock();
         if guard.should_exit {
             Poll::Ready(Event::Exit)
         } else if guard.should_hold {
@@ -289,7 +291,7 @@ impl Future for GetEvent<'_> {
 impl Drop for GetEvent<'_> {
     fn drop(&mut self) {
         if self.waiting {
-            let mut guard = self.hdl.0.ctrl.lock().unwrap();
+            let mut guard = self.hdl.0.ctrl.lock();
             guard.waker_task = None;
         }
     }
@@ -311,7 +313,7 @@ impl TaskCtrl {
     /// requested to exit (via [TaskCtrl::exit]) or has exited on its own.
     pub fn run(&mut self) -> Result<(), Error> {
         let inner = self.0.upgrade().ok_or_else(|| Error::Exited)?;
-        let mut guard = inner.ctrl.lock().unwrap();
+        let mut guard = inner.ctrl.lock();
         if guard.should_exit {
             Err(Error::ExitInProgress)
         } else {
@@ -324,7 +326,7 @@ impl TaskCtrl {
     /// task enters such a state, or (for whatever reason) has exited.
     pub fn hold(&mut self) -> Result<(), Error> {
         let inner = self.0.upgrade().ok_or_else(|| Error::Exited)?;
-        let mut guard = inner.ctrl.lock().unwrap();
+        let mut guard = inner.ctrl.lock();
         if guard.should_exit {
             Err(Error::ExitInProgress)
         } else {
@@ -349,7 +351,7 @@ impl TaskCtrl {
     /// said exit to actually occur.
     pub fn exit(&mut self) {
         if let Some(inner) = self.0.upgrade() {
-            let guard = inner.ctrl.lock().unwrap();
+            let guard = inner.ctrl.lock();
             inner.request_exit(guard);
         }
     }
@@ -380,7 +382,7 @@ impl Future for CtrlHeld<'_> {
         cx: &mut Context<'_>,
     ) -> Poll<Self::Output> {
         if let Some(inner) = self.tc.0.upgrade() {
-            let mut ctrl = inner.ctrl.lock().unwrap();
+            let mut ctrl = inner.ctrl.lock();
             if ctrl.should_exit {
                 ctrl.waker_ctrl = None;
                 self.pending_request = false;
@@ -410,7 +412,7 @@ impl Drop for CtrlHeld<'_> {
         // Clean up the hold request if being cancelled
         if self.pending_request {
             if let Some(inner) = self.tc.0.upgrade() {
-                let mut ctrl = inner.ctrl.lock().unwrap();
+                let mut ctrl = inner.ctrl.lock();
                 inner.unrequest_hold(&mut ctrl);
             }
         }
@@ -430,7 +432,7 @@ impl TaskGroup {
     where
         I: Iterator<Item = task::JoinHandle<()>>,
     {
-        let mut guard = self.0.lock().unwrap();
+        let mut guard = self.0.lock();
         guard.extend(tasks);
     }
 
@@ -442,7 +444,7 @@ impl TaskGroup {
     /// task failed; the wrapped value is a `Vec` of all of the returned errors.
     pub async fn join_all(&self) -> Option<Vec<task::JoinError>> {
         let workers = {
-            let mut guard = self.0.lock().unwrap();
+            let mut guard = self.0.lock();
             std::mem::replace(&mut *guard, Vec::new())
         };
 
@@ -484,7 +486,7 @@ impl ThreadGroup {
     where
         I: Iterator<Item = std::io::Result<thread::JoinHandle<()>>>,
     {
-        let mut guard = self.0.lock().unwrap();
+        let mut guard = self.0.lock();
         let mut status = Ok(());
         for result in threads {
             match result {
@@ -503,7 +505,7 @@ impl ThreadGroup {
     /// Block until all contained [thread::JoinHandle]s have been joined,
     /// returning any resulting [ThreadErr]s after doing so.
     pub fn block_until_joined(&self) -> Option<Vec<ThreadErr>> {
-        let mut guard = self.0.lock().unwrap();
+        let mut guard = self.0.lock();
         let errors =
             guard.drain(..).filter_map(|t| t.join().err()).collect::<Vec<_>>();
         if errors.is_empty() {

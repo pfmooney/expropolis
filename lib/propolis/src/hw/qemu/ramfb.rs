@@ -2,10 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::prelude::*;
+
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
@@ -220,7 +222,7 @@ impl RamFb {
         &self,
         interested: impl FnOnce(&Spec) -> bool,
     ) -> Option<FrameSnap> {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
         let mem = self.acc_mem.access()?;
 
         // Is the configuration even remotely valid?
@@ -237,7 +239,7 @@ impl RamFb {
     /// Get [Spec] representing the current device configuration, if it happens
     /// to be valid for a [Frame].
     pub fn read_spec(&self) -> Result<Spec, ConfigError> {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
         Spec::try_from(&state.config)
     }
 
@@ -250,7 +252,7 @@ impl RamFb {
     }
 
     pub(crate) fn fwcfg_rw(&self, mut rwo: RWOp) -> Result<(), ()> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
 
         // Writes outside the bounds of the config register are not allowed
         if let RWOp::Write(wo) = &rwo {
@@ -306,7 +308,7 @@ impl Future for UpdatedSince<'_> {
         let since = self.since;
         let mut this = self.project();
         loop {
-            if this.ramfb.state.lock().unwrap().last_update > since {
+            if this.ramfb.state.lock().last_update > since {
                 return Poll::Ready(());
             }
             if let Poll::Ready(_) = Notified::poll(this.notified.as_mut(), cx) {
@@ -335,7 +337,7 @@ impl MigrateSingle for RamFb {
         &self,
         _ctx: &MigrateCtx,
     ) -> Result<PayloadOutput, MigrateStateError> {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
         let config = &state.config;
         Ok(migrate::RamFbV1 {
             addr: config.addr,
@@ -355,7 +357,7 @@ impl MigrateSingle for RamFb {
     ) -> Result<(), MigrateStateError> {
         let data: migrate::RamFbV1 = offer.parse()?;
 
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         let config = &mut state.config;
         config.addr = data.addr;
         config.fourcc = data.fourcc;
