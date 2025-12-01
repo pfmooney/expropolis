@@ -207,18 +207,20 @@ impl I440FxHostBridge {
         let piofn =
             Arc::new(move |port: u16, rwo: RWOp| pio_dev.pio_rw(port, rwo))
                 as Arc<PioFn>;
+
+        // TODO: handle port/addr conflicts at runtime?
         pio.register(
             pci::bits::PORT_PCI_CONFIG_ADDR,
             pci::bits::LEN_PCI_CONFIG_ADDR,
             Arc::clone(&piofn),
         )
-        .unwrap();
+        .expect("PCI config addr port uncontended");
         pio.register(
             pci::bits::PORT_PCI_CONFIG_DATA,
             pci::bits::LEN_PCI_CONFIG_DATA,
             piofn,
         )
-        .unwrap();
+        .expect("PCI config data port uncontended");
 
         if self.pcie_cfg.is_some() {
             let mmio = &machine.bus_mmio;
@@ -231,7 +233,7 @@ impl I440FxHostBridge {
                 LEN_PCI_ECAM_REGION,
                 mmio_ecam_fn,
             )
-            .unwrap();
+            .expect("PCIe ECAM region uncontended");
         }
     }
 
@@ -289,14 +291,14 @@ impl Chipset for I440FxHostBridge {
         dev: Arc<dyn pci::Endpoint>,
         lintr_cfg: Option<LintrCfg>,
     ) {
-        self.pci_topology
-            .pci_attach(
-                LogicalBusId(bdf.bus.get()),
-                bdf.location,
-                dev,
-                lintr_cfg,
-            )
-            .unwrap();
+        if let Err(_) = self.pci_topology.pci_attach(
+            LogicalBusId(bdf.bus.get()),
+            bdf.location,
+            dev,
+            lintr_cfg,
+        ) {
+            panic!("conflicting PCI device at {bdf:?}");
+        }
     }
     fn power_pin(&self) -> Arc<dyn IntrPin> {
         self.pin_power.clone()
@@ -376,14 +378,15 @@ impl Piix3Lpc {
         let this = Arc::clone(self);
         let piofn = Arc::new(move |port: u16, rwo: RWOp| this.pio_rw(port, rwo))
             as Arc<PioFn>;
+
         pio.register(
             ibmpc::PORT_FAST_A20,
             ibmpc::LEN_FAST_A20,
             Arc::clone(&piofn),
         )
-        .unwrap();
+        .expect("A20 port uncontended");
         pio.register(ibmpc::PORT_POST_CODE, ibmpc::LEN_POST_CODE, piofn)
-            .unwrap();
+            .expect("POST code port uncontended");
     }
 
     fn pio_rw(&self, port: u16, rwo: RWOp) {
@@ -737,7 +740,8 @@ impl PMRegs {
         *self = Self::default();
     }
     fn pmtimer_port(&self) -> u16 {
-        self.pm_base.checked_add(PM_TMR_OFFSET).unwrap()
+        // TODO: Should we be ensuring that PMBASE remains valid?
+        self.pm_base.saturating_add(PM_TMR_OFFSET)
     }
 }
 
@@ -831,7 +835,8 @@ impl Piix3PM {
         let this = Arc::clone(&self);
         let piofn = Arc::new(move |port: u16, rwo: RWOp| this.pio_rw(port, rwo))
             as Arc<PioFn>;
-        pio.register(PMBASE_DEFAULT, PMBASE_LEN, piofn).unwrap();
+        pio.register(PMBASE_DEFAULT, PMBASE_LEN, piofn)
+            .expect("PMBASE port is uncontended");
     }
 
     fn pio_rw(&self, _port: u16, mut rwo: RWOp) {
@@ -1101,18 +1106,18 @@ mod test {
     fn setup_attach(scaffold: &Scaffold, dev: Arc<dyn Endpoint>) -> pci::Bus {
         let bus = scaffold.create_bus();
         // just attach at slot 0 func 0
-        bus.attach(pci::BusLocation::new(0, 0).unwrap(), dev, None);
+        bus.attach(pci::BusLocation::new_unchecked(0, 0), dev, None);
         bus
     }
 
     fn topo_attach(topo: &pci::topology::Topology, dev: Arc<dyn Endpoint>) {
         topo.pci_attach(
             pci::topology::LogicalBusId(0),
-            pci::BusLocation::new(0, 0).unwrap(),
+            pci::BusLocation::new_unchecked(0, 0),
             dev,
             None,
         )
-        .unwrap();
+        .expect("can attach PCI device at 0.0.0");
     }
 
     #[test]
@@ -1143,10 +1148,18 @@ mod test {
         cfg_write(hb.as_ref() as &dyn Endpoint);
     }
 
+    fn test_setup() -> (Arc<VmmHdl>, Scaffold) {
+        (
+            Arc::new(
+                VmmHdl::new_test(0).expect("test VmmHdl creation succeeds"),
+            ),
+            Scaffold::new(),
+        )
+    }
+
     #[test]
     fn lpc_pci_cfg_read() {
-        let hdl = Arc::new(VmmHdl::new_test(0).unwrap());
-        let scaffold = Scaffold::new();
+        let (hdl, scaffold) = test_setup();
 
         let lpc = Piix3Lpc::create(hdl);
         let _bus = setup_attach(&scaffold, lpc.clone());
@@ -1156,8 +1169,7 @@ mod test {
 
     #[test]
     fn lpc_pci_cfg_write() {
-        let hdl = Arc::new(VmmHdl::new_test(0).unwrap());
-        let scaffold = Scaffold::new();
+        let (hdl, scaffold) = test_setup();
 
         let lpc = Piix3Lpc::create(hdl);
         let _bus = setup_attach(&scaffold, lpc.clone());
@@ -1167,8 +1179,7 @@ mod test {
 
     #[test]
     fn pm_pci_cfg_read() {
-        let hdl = Arc::new(VmmHdl::new_test(0).unwrap());
-        let scaffold = Scaffold::new();
+        let (hdl, scaffold) = test_setup();
         let log = Logger::root(Discard, slog::o!());
         let power_pin = Arc::new(NoOpPin {});
 
@@ -1180,8 +1191,7 @@ mod test {
 
     #[test]
     fn pm_pci_cfg_write() {
-        let hdl = Arc::new(VmmHdl::new_test(0).unwrap());
-        let scaffold = Scaffold::new();
+        let (hdl, scaffold) = test_setup();
         let log = Logger::root(Discard, slog::o!());
         let power_pin = Arc::new(NoOpPin {});
 

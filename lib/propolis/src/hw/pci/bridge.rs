@@ -441,13 +441,15 @@ mod test {
             let mut builder = Builder::new();
             if let Some(bridges) = bridges {
                 for bridge in bridges {
-                    builder.add_bridge(bridge).unwrap();
+                    builder
+                        .add_bridge(bridge)
+                        .expect("bridge association succeeds");
                 }
             }
 
-            let machine = Machine::new_test().unwrap();
+            let machine = Machine::new_test_unchecked();
             let FinishedTopology { topology, bridges: _bridges } =
-                builder.finish(&machine).unwrap();
+                builder.finish(&machine).expect("topology creation succeeds");
             Self { _machine: machine, topology }
         }
 
@@ -517,51 +519,63 @@ mod test {
     #[test]
     fn bridge_routing() {
         let env = Env::new(Some(vec![
-            BridgeDescription::new(LogicalBusId(1), Bdf::new(0, 1, 0).unwrap()),
-            BridgeDescription::new(LogicalBusId(2), Bdf::new(0, 2, 0).unwrap()),
-            BridgeDescription::new(LogicalBusId(3), Bdf::new(1, 1, 0).unwrap()),
-            BridgeDescription::new(LogicalBusId(4), Bdf::new(2, 1, 0).unwrap()),
+            BridgeDescription::new(
+                LogicalBusId(1),
+                Bdf::new_unchecked(0, 1, 0),
+            ),
+            BridgeDescription::new(
+                LogicalBusId(2),
+                Bdf::new_unchecked(0, 2, 0),
+            ),
+            BridgeDescription::new(
+                LogicalBusId(3),
+                Bdf::new_unchecked(1, 1, 0),
+            ),
+            BridgeDescription::new(
+                LogicalBusId(4),
+                Bdf::new_unchecked(2, 1, 0),
+            ),
         ]));
 
         // Set the first test bridge's downstream bus to 81, then verify that
         // 81.1.0 is a valid bridge device.
-        env.write_secondary_bus(Bdf::new(0, 1, 0).unwrap(), 81);
+        env.write_secondary_bus(Bdf::new_unchecked(0, 1, 0), 81);
         assert_eq!(
-            env.read_header_type(Bdf::new(81, 1, 0).unwrap()),
+            env.read_header_type(Bdf::new_unchecked(81, 1, 0)),
             HEADER_TYPE_BRIDGE
         );
 
         // Write bus 83 to the newly-connected downstream bridge's secondary
         // bus number to distinguish it from the other, uninitialized bridge.
-        env.write_secondary_bus(Bdf::new(81, 1, 0).unwrap(), 83);
+        env.write_secondary_bus(Bdf::new_unchecked(81, 1, 0), 83);
 
         // Clear the test bridge's secondary bus register and verify the routing
         // is removed.
-        env.write_secondary_bus(Bdf::new(0, 1, 0).unwrap(), 0);
-        assert_eq!(env.read_secondary_bus(Bdf::new(81, 1, 0).unwrap()), 0);
+        env.write_secondary_bus(Bdf::new_unchecked(0, 1, 0), 0);
+        assert_eq!(env.read_secondary_bus(Bdf::new_unchecked(81, 1, 0)), 0);
 
         // Set the second parent bridge's downstream bus to 81. The downstream
         // bridge's secondary bus should not be set.
-        env.write_secondary_bus(Bdf::new(0, 2, 0).unwrap(), 81);
+        env.write_secondary_bus(Bdf::new_unchecked(0, 2, 0), 81);
         assert_eq!(
-            env.read_header_type(Bdf::new(81, 1, 0).unwrap()),
+            env.read_header_type(Bdf::new_unchecked(81, 1, 0)),
             HEADER_TYPE_BRIDGE
         );
-        assert_eq!(env.read_secondary_bus(Bdf::new(81, 1, 0).unwrap()), 0);
+        assert_eq!(env.read_secondary_bus(Bdf::new_unchecked(81, 1, 0)), 0);
 
         // Route the first parent bridge to downstream bus 82 and verify the
         // child bridge with bus 83 is still there.
-        env.write_secondary_bus(Bdf::new(0, 1, 0).unwrap(), 82);
-        assert_eq!(env.read_secondary_bus(Bdf::new(82, 1, 0).unwrap()), 83);
+        env.write_secondary_bus(Bdf::new_unchecked(0, 1, 0), 82);
+        assert_eq!(env.read_secondary_bus(Bdf::new_unchecked(82, 1, 0)), 83);
 
         // Clear the second bridge's routing and verify that the first bridge's
         // routing is left alone.
-        env.write_secondary_bus(Bdf::new(0, 2, 0).unwrap(), 0);
-        assert_eq!(env.read_secondary_bus(Bdf::new(82, 1, 0).unwrap()), 83);
+        env.write_secondary_bus(Bdf::new_unchecked(0, 2, 0), 0);
+        assert_eq!(env.read_secondary_bus(Bdf::new_unchecked(82, 1, 0)), 83);
 
         // Clear the first bridge's routing and verify that its entry is also
         // safely removed.
-        env.write_secondary_bus(Bdf::new(0, 1, 0).unwrap(), 0);
-        assert_eq!(env.read_secondary_bus(Bdf::new(82, 1, 0).unwrap()), 0);
+        env.write_secondary_bus(Bdf::new_unchecked(0, 1, 0), 0);
+        assert_eq!(env.read_secondary_bus(Bdf::new_unchecked(82, 1, 0)), 0);
     }
 }

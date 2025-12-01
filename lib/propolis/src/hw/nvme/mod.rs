@@ -348,14 +348,13 @@ impl NvmeCtrl {
         cqid: QueueId,
         nvme: &PciNvme,
     ) -> Result<(), NvmeError> {
-        if (cqid as usize) >= MAX_NUM_QUEUES
-            || self.cqs[cqid as usize].is_none()
-        {
-            return Err(NvmeError::InvalidCompQueue(cqid));
-        }
-
         // Make sure this CQ has no more associated SQs
-        let sqs = self.cqs[cqid as usize].as_ref().unwrap().associated_sqs();
+        let sqs = self
+            .cqs
+            .get(cqid as usize)
+            .and_then(Option::as_ref)
+            .ok_or(NvmeError::InvalidCompQueue(cqid))?
+            .associated_sqs();
         if sqs > 0 {
             return Err(NvmeError::AssociatedSubQueuesStillExist(cqid, sqs));
         }
@@ -910,7 +909,8 @@ impl PciNvme {
             .finish();
 
         let block_attach = block::DeviceAttachment::new(
-            NonZeroUsize::new(MAX_NUM_IO_QUEUES).unwrap(),
+            NonZeroUsize::new(MAX_NUM_IO_QUEUES)
+                .expect("MAX_NUM_IO_QUEUES is non-zero"),
             pci_state.acc_mem.child(Some("block backend".to_string())),
         );
 
@@ -1152,7 +1152,7 @@ impl PciNvme {
 
                 // Queue IDs should be 16-bit and we know
                 // `off <= CONTROLLER_REG_SZ (0x4000)`
-                let qid = qid.try_into().unwrap();
+                let qid = qid.try_into().expect("QID width is not excessive");
 
                 // 32-bit register but ignore reserved top 16-bits
                 let val = wo.read_u32() as u16;
@@ -1208,7 +1208,7 @@ impl PciNvme {
                 .queues
                 .get_cq(qid)
                 .ok_or(NvmeError::InvalidCompQueue(qid))?;
-            let cq = guard.as_ref().unwrap();
+            let cq = guard.as_ref().expect("get_cq() invariant ensures Some()");
 
             cq.notify_head(val)?;
 
@@ -1233,7 +1233,9 @@ impl PciNvme {
                         "IO queues should not associate with Admin queue IDs"
                     );
                     let sq_guard = self.queues.get_sq(sqid)?;
-                    let sq = sq_guard.as_ref().unwrap();
+                    let sq = sq_guard
+                        .as_ref()
+                        .expect("get_sq() invariant ensures Some()");
                     Some((sqid, sq.num_occupied()))
                 })
             {
@@ -1257,7 +1259,7 @@ impl PciNvme {
                 .queues
                 .get_sq(qid)
                 .ok_or(NvmeError::InvalidSubQueue(qid))?;
-            let sq = guard.as_ref().unwrap();
+            let sq = guard.as_ref().expect("get_sq() invariant ensures Some()");
 
             let num_occupied = sq.notify_tail(val)?;
             let devsq_id = sq.devq_id();
@@ -1288,11 +1290,10 @@ impl PciNvme {
         // Grab the Admin CQ too
         let cq = state.get_admin_cq()?;
 
-        let mem = self.mem_access();
-        if mem.is_none() {
+        let Some(mem) = self.mem_access() else {
             // XXX: set controller error state?
-        }
-        let mem = mem.unwrap();
+            return Ok(());
+        };
 
         while let Some((sub, permit, _idx)) = sq.pop() {
             use cmds::AdminCmd;
@@ -1553,12 +1554,14 @@ enum CtrlrReg {
 
 /// Size of the Controller Register space
 ///
-/// We specify a size of 0x4000 even though we're not using anywhere near that much
-/// space because the NVMe spec requires that bits 13:04 of MLBAR be R/O and 0 on reset.
-/// We do that by basically returning a size of 0x4000 which makes us ignore any writes
-/// to the bottom 14 bits as needed. See `pci::Bars::reg_write`.
+/// We specify a size of 0x4000 even though we're not using anywhere near that
+/// much space because the NVMe spec requires that bits 13:04 of MLBAR be R/O
+/// and 0 on reset. We do that by basically returning a size of 0x4000 which
+/// makes us ignore any writes to the bottom 14 bits as needed. See
+/// `pci::Bars::reg_write`.
 ///
-/// See NVMe 1.0e Section 2.1.10 Offset 10h: MLBAR (BAR0) - Memory Register Base Address, lower 32 bits
+/// See NVMe 1.0e Section 2.1.10 Offset 10h: MLBAR (BAR0) - Memory Register Base
+/// Address, lower 32 bits
 const CONTROLLER_REG_SZ: usize = 0x4000;
 
 struct CtrlRegs {
@@ -1589,10 +1592,12 @@ lazy_static! {
             (CtrlrReg::Reserved, 0),
         ];
 
-        // Update the last `Reserved` slot to pad out the rest of the controller register space
+        // Update the last `Reserved` slot to pad out the rest of the controller
+        // register space
         let regs_sz = layout.iter().map(|(_, sz)| sz).sum::<usize>();
         assert!(regs_sz <= CONTROLLER_REG_SZ);
-        layout.last_mut().unwrap().1 = CONTROLLER_REG_SZ - regs_sz;
+        layout.last_mut().expect("iterator not empty").1
+            = CONTROLLER_REG_SZ - regs_sz;
 
         // Find the offset of IOQueueDoorBells
         let db_offset = layout

@@ -10,6 +10,7 @@ use crate::intr_pins::IntrPin;
 pub mod i440fx;
 
 pub trait Chipset: Send + Sync {
+    // TODO: Make this fallible, rather than panicking on conflicting BDF
     fn pci_attach(
         &self,
         bdf: Bdf,

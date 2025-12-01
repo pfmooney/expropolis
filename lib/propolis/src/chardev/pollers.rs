@@ -550,7 +550,7 @@ impl Params {
         Self {
             poll_interval: Duration::from_millis(10),
             poll_miss_thresh: 2,
-            buf_size: NonZeroUsize::new(16).unwrap(),
+            buf_size: test::DEFAULT_BUF_SIZE,
         }
     }
 }
@@ -562,6 +562,9 @@ mod test {
 
     use futures::FutureExt;
 
+    pub(super) const DEFAULT_BUF_SIZE: NonZeroUsize =
+        NonZeroUsize::new(16).expect("16 is nonzero");
+
     #[tokio::test]
     async fn read_empty_returns_zero_bytes() {
         let uart = Arc::new(TestUart::new(4, 4));
@@ -569,19 +572,19 @@ mod test {
         rpoll.attach(uart.as_ref());
 
         let mut output = [];
-        let res = rpoll.read(&mut output, uart.as_ref()).await.unwrap();
-        assert_eq!(res, 0);
+        let res = rpoll.read(&mut output, uart.as_ref()).await;
+        assert_eq!(res, Some(0));
     }
 
     #[tokio::test]
     async fn write_empty_fills_zero_bytes() {
         let uart = Arc::new(TestUart::new(4, 4));
-        let wpoll = SinkBuffer::new(NonZeroUsize::new(16).unwrap());
+        let wpoll = SinkBuffer::new(DEFAULT_BUF_SIZE);
         wpoll.attach(uart.as_ref());
 
         let input = [];
-        let res = wpoll.write(&input, uart.as_ref()).await.unwrap();
-        assert_eq!(res, 0);
+        let res = wpoll.write(&input, uart.as_ref()).await;
+        assert_eq!(res, Some(0));
     }
 
     #[tokio::test]
@@ -596,7 +599,7 @@ mod test {
 
         let mut output = [0u8; 16];
         // ... We can read that byte.
-        assert_eq!(1, rpoll.read(&mut output, uart.as_ref()).await.unwrap());
+        assert_eq!(Some(1), rpoll.read(&mut output, uart.as_ref()).await);
         assert_eq!(output[0], 0xFE);
     }
 
@@ -613,7 +616,7 @@ mod test {
 
         let mut output = [0u8; 16];
         // ... We can read them.
-        assert_eq!(2, rpoll.read(&mut output, uart.as_ref()).await.unwrap());
+        assert_eq!(Some(2), rpoll.read(&mut output, uart.as_ref()).await);
         assert_eq!(output[0], 0x0A);
         assert_eq!(output[1], 0x0B);
     }
@@ -639,43 +642,44 @@ mod test {
 
         // However, once the uart has identified that it is readable, we can
         // begin reading bytes.
-        assert_eq!(1, rpoll.read(&mut output, uart.as_ref()).await.unwrap());
+        assert_eq!(Some(1), rpoll.read(&mut output, uart.as_ref()).await);
         assert_eq!(output[0], 0xFE);
     }
 
     #[tokio::test]
     async fn write_byte() {
         let uart = Arc::new(TestUart::new(4, 4));
-        let wpoll = SinkBuffer::new(NonZeroUsize::new(16).unwrap());
+        let wpoll = SinkBuffer::new(DEFAULT_BUF_SIZE);
         wpoll.attach(uart.as_ref());
 
         let input = [0xFE];
         // If we write a byte...
-        assert_eq!(1, wpoll.write(&input, uart.as_ref()).await.unwrap());
+        assert_eq!(Some(1), wpoll.write(&input, uart.as_ref()).await);
 
         // ... The guest can read it.
-        assert_eq!(uart.pop_sink().unwrap(), 0xFE);
+        assert_eq!(uart.pop_sink(), Some(0xFE));
     }
 
     #[tokio::test]
     async fn write_bytes() {
         let uart = Arc::new(TestUart::new(4, 4));
-        let wpoll = SinkBuffer::new(NonZeroUsize::new(16).unwrap());
+        let wpoll = SinkBuffer::new(DEFAULT_BUF_SIZE);
         wpoll.attach(uart.as_ref());
 
         let input = [0x0A, 0x0B];
         // If we write multiple bytes...
-        assert_eq!(2, wpoll.write(&input, uart.as_ref()).await.unwrap());
+        assert_eq!(Some(2), wpoll.write(&input, uart.as_ref()).await);
 
         // ... The guest can read them.
-        assert_eq!(uart.pop_sink().unwrap(), 0x0A);
-        assert_eq!(uart.pop_sink().unwrap(), 0x0B);
+        assert_eq!(uart.pop_sink(), Some(0x0A));
+        assert_eq!(uart.pop_sink(), Some(0x0B));
     }
 
     #[tokio::test]
     async fn write_bytes_beyond_internal_buffer_size() {
         let uart = Arc::new(TestUart::new(1, 1));
-        let wpoll = SinkBuffer::new(NonZeroUsize::new(3).unwrap());
+        let wpoll =
+            SinkBuffer::new(NonZeroUsize::new(3).expect("3 is non-zero"));
         wpoll.attach(uart.as_ref());
         assert_eq!(3, wpoll.inner.lock().buf.capacity());
 
@@ -691,7 +695,7 @@ mod test {
         // Once this occurs, the UART will need to pop data from the
         // incoming sink to make space for subsequent writes.
         let input = [0x0A, 0x0B, 0x0C, 0x0D, 0x0E];
-        assert_eq!(4, wpoll.write(&input, uart.as_ref()).await.unwrap());
+        assert_eq!(Some(4), wpoll.write(&input, uart.as_ref()).await);
 
         futures::select! {
             _ = wpoll.write(&input[4..], uart.as_ref()).fuse() => {
@@ -700,19 +704,19 @@ mod test {
             default => {}
         }
 
-        assert_eq!(uart.pop_sink().unwrap(), 0x0A);
+        assert_eq!(uart.pop_sink(), Some(0x0A));
         uart.notify_sink().await;
 
         // After a byte is popped, the last byte becomes writable.
-        assert_eq!(1, wpoll.write(&input[4..], uart.as_ref()).await.unwrap());
+        assert_eq!(Some(1), wpoll.write(&input[4..], uart.as_ref()).await);
 
-        assert_eq!(uart.pop_sink().unwrap(), 0x0B);
+        assert_eq!(uart.pop_sink(), Some(0x0B));
         uart.notify_sink().await;
-        assert_eq!(uart.pop_sink().unwrap(), 0x0C);
+        assert_eq!(uart.pop_sink(), Some(0x0C));
         uart.notify_sink().await;
-        assert_eq!(uart.pop_sink().unwrap(), 0x0D);
+        assert_eq!(uart.pop_sink(), Some(0x0D));
         uart.notify_sink().await;
-        assert_eq!(uart.pop_sink().unwrap(), 0x0E);
+        assert_eq!(uart.pop_sink(), Some(0x0E));
     }
 
     struct TestUart {

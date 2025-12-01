@@ -114,6 +114,9 @@ impl Drop for Machine {
 
 #[cfg(test)]
 impl Machine {
+    pub(crate) fn new_test_unchecked() -> Self {
+        Self::new_test().expect("machine creation succeeds")
+    }
     pub(crate) fn new_test() -> Result<Self> {
         // Create a test handle with 2M tempfile to use as our VM "memory"
         let hdl = Arc::new(VmmHdl::new_test(2 * 1024 * 1024)?);

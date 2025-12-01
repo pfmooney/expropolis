@@ -53,7 +53,7 @@ fn pcie_decoder() {
     let mut buf = [0u8; 4];
     let mut ro = ReadOp::from_buf(0, &mut buf);
     pcie.service(RWOp::Read(&mut ro), |bdf, rwo| {
-        assert_eq!(*bdf, Bdf::new(0, 0, 0).unwrap());
+        assert_eq!(*bdf, Bdf::new_unchecked(0, 0, 0));
         assert!(matches!(rwo, RWOp::Read(_)));
         assert_eq!(rwo.offset(), 0);
         assert_eq!(rwo.len(), 4);
@@ -63,7 +63,7 @@ fn pcie_decoder() {
     let buf = [0u8; 16];
     let mut wo = WriteOp::from_buf(0x400, &buf);
     pcie.service(RWOp::Write(&mut wo), |bdf, rwo| {
-        assert_eq!(*bdf, Bdf::new(0, 0, 0).unwrap());
+        assert_eq!(*bdf, Bdf::new_unchecked(0, 0, 0));
         assert!(matches!(rwo, RWOp::Write(_)));
         assert_eq!(rwo.offset(), 0x400);
         assert_eq!(rwo.len(), 16);
@@ -77,7 +77,7 @@ fn pcie_decoder_multiple_bdfs() {
     let mut buf = [0u8; 4];
     let mut ro = ReadOp::from_buf(1_usize << 12, &mut buf);
     pcie.service(RWOp::Read(&mut ro), |bdf, rwo| {
-        assert_eq!(*bdf, Bdf::new(0, 0, 1).unwrap());
+        assert_eq!(*bdf, Bdf::new_unchecked(0, 0, 1));
         assert_eq!(rwo.offset(), 0);
         Some(())
     });
@@ -85,7 +85,7 @@ fn pcie_decoder_multiple_bdfs() {
     let mut ro =
         ReadOp::from_buf((4_usize << 15) | (3_usize << 12) | 0x123, &mut buf);
     pcie.service(RWOp::Read(&mut ro), |bdf, rwo| {
-        assert_eq!(*bdf, Bdf::new(0, 4, 3).unwrap());
+        assert_eq!(*bdf, Bdf::new_unchecked(0, 4, 3));
         assert_eq!(rwo.offset(), 0x123);
         Some(())
     });
@@ -95,7 +95,7 @@ fn pcie_decoder_multiple_bdfs() {
         &mut buf,
     );
     pcie.service(RWOp::Read(&mut ro), |bdf, rwo| {
-        assert_eq!(*bdf, Bdf::new(133, 7, 1).unwrap());
+        assert_eq!(*bdf, Bdf::new_unchecked(133, 7, 1));
         assert_eq!(rwo.offset(), 0x337);
         Some(())
     });
@@ -112,7 +112,7 @@ fn pcie_decoder_min_buses() {
             pcie.service(RWOp::Read(&mut ro), |bdf, rwo| {
                 assert_eq!(
                     *bdf,
-                    Bdf::new(bus as u8, 0, 0).unwrap(),
+                    Bdf::new_unchecked(bus as u8, 0, 0),
                     "group {}, bus {}",
                     seg_group,
                     bus

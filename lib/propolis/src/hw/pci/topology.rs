@@ -349,7 +349,7 @@ mod test {
 
     #[test]
     fn build_without_bridges() {
-        let machine = Machine::new_test().unwrap();
+        let machine = Machine::new_test_unchecked();
         let builder = Builder::new();
 
         assert!(builder.finish(&machine).is_ok());
@@ -357,19 +357,19 @@ mod test {
 
     #[test]
     fn build_with_bridges() {
-        let machine = Machine::new_test().unwrap();
+        let machine = Machine::new_test_unchecked();
         let mut builder = Builder::new();
 
         assert!(builder
             .add_bridge(BridgeDescription::new(
                 LogicalBusId(1),
-                Bdf::new(0, 1, 0).unwrap(),
+                Bdf::new_unchecked(0, 1, 0),
             ))
             .is_ok());
         assert!(builder
             .add_bridge(BridgeDescription::new(
                 LogicalBusId(4),
-                Bdf::new(0, 4, 0).unwrap(),
+                Bdf::new_unchecked(0, 4, 0),
             ))
             .is_ok());
 
@@ -382,7 +382,7 @@ mod test {
         assert!(builder
             .add_bridge(BridgeDescription::new(
                 LogicalBusId(0),
-                Bdf::new(0, 3, 0).unwrap()
+                Bdf::new_unchecked(0, 3, 0)
             ))
             .is_err());
     }
@@ -393,48 +393,51 @@ mod test {
         assert!(builder
             .add_bridge(BridgeDescription::new(
                 LogicalBusId(7),
-                Bdf::new(0, 7, 0).unwrap()
+                Bdf::new_unchecked(0, 7, 0)
             ))
             .is_ok());
         assert!(builder
             .add_bridge(BridgeDescription::new(
                 LogicalBusId(7),
-                Bdf::new(0, 4, 0).unwrap()
+                Bdf::new_unchecked(0, 4, 0)
             ))
             .is_err());
         assert!(builder
             .add_bridge(BridgeDescription::new(
                 LogicalBusId(4),
-                Bdf::new(0, 7, 0).unwrap()
+                Bdf::new_unchecked(0, 7, 0)
             ))
             .is_err());
     }
 
     #[test]
     fn cfg_read() {
-        let machine = Machine::new_test().unwrap();
+        let machine = Machine::new_test_unchecked();
         let mut builder = Builder::new();
         assert!(builder
             .add_bridge(BridgeDescription::new(
                 LogicalBusId(1),
-                Bdf::new(0, 1, 0).unwrap()
+                Bdf::new_unchecked(0, 1, 0)
             ))
             .is_ok());
 
-        let topology = builder.finish(&machine).unwrap().topology;
+        let topology = builder
+            .finish(&machine)
+            .expect("topology creation succeeds")
+            .topology;
         let mut buf = [0u8; 1];
         let mut ro = ReadOp::from_buf(0, &mut buf);
         assert!(topology
             .pci_cfg_rw(
                 RoutedBusId(0),
-                BusLocation::new(1, 0).unwrap(),
+                BusLocation::new_unchecked(1, 0),
                 RWOp::Read(&mut ro),
             )
             .is_some());
         assert!(topology
             .pci_cfg_rw(
                 RoutedBusId(1),
-                BusLocation::new(1, 0).unwrap(),
+                BusLocation::new_unchecked(1, 0),
                 RWOp::Read(&mut ro),
             )
             .is_none());
@@ -442,19 +445,19 @@ mod test {
 
     #[test]
     fn created_bridges() {
-        let machine = Machine::new_test().unwrap();
+        let machine = Machine::new_test_unchecked();
 
         let mut builder = Builder::new();
         assert!(builder
             .add_bridge(BridgeDescription::new(
                 LogicalBusId(1),
-                Bdf::new(0, 1, 0).unwrap()
+                Bdf::new_unchecked(0, 1, 0)
             ))
             .is_ok());
         let FinishedTopology { bridges, .. } =
-            builder.finish(&machine).unwrap();
+            builder.finish(&machine).expect("topology creation succeeds");
 
         assert_eq!(bridges.len(), 1);
-        assert_eq!(bridges[0].0, Bdf::new(0, 1, 0).unwrap());
+        assert_eq!(bridges[0].0, Bdf::new_unchecked(0, 1, 0));
     }
 }
