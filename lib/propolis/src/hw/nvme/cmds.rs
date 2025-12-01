@@ -1104,7 +1104,7 @@ mod test {
     #[test]
     fn test_prp_single() {
         let (_pmap, acc_mem) = setup();
-        let memctx = acc_mem.access().unwrap();
+        let memctx = acc_mem.iaccess();
 
         // Basic single page
         let mut iter = PrpIter::new(pages(1), 0x1000, 0, &memctx);
@@ -1126,7 +1126,7 @@ mod test {
     #[test]
     fn test_prp_dual() {
         let (_pmap, acc_mem) = setup();
-        let memctx = acc_mem.access().unwrap();
+        let memctx = acc_mem.iaccess();
 
         // Basic dual page
         let mut iter = PrpIter::new(pages(2), 0x1000, 0x2000, &memctx);
@@ -1154,7 +1154,7 @@ mod test {
     fn test_prp_list() {
         // Basic triple page (aligned prplist)
         let (_pmap, acc_mem) = setup();
-        let memctx = acc_mem.access().unwrap();
+        let memctx = acc_mem.iaccess();
 
         let listprps: [u64; 2] = [0x2000, 0x3000];
         let listaddr = 0x80000;
@@ -1167,7 +1167,7 @@ mod test {
 
         // Basic triple page (offset prplist)
         let (_pmap, acc_mem) = setup();
-        let memctx = acc_mem.access().unwrap();
+        let memctx = acc_mem.iaccess();
 
         let listprps: [u64; 2] = [0x2000, 0x3000];
         let listaddr = 0x80010;
@@ -1180,7 +1180,7 @@ mod test {
 
         // Offset triple page
         let (_pmap, acc_mem) = setup();
-        let memctx = acc_mem.access().unwrap();
+        let memctx = acc_mem.iaccess();
 
         let listprps: [u64; 3] = [0x2000, 0x3000, 0x4000];
         let listaddr = 0x80000;
@@ -1198,7 +1198,7 @@ mod test {
     fn test_prp_list_offset_last() {
         // List with offset, where last entry covers less than one page
         let (_pmap, acc_mem) = setup();
-        let memctx = acc_mem.access().unwrap();
+        let memctx = acc_mem.iaccess();
 
         let listaddr = 0x80000u64;
         let mut prps: Vec<u64> = Vec::with_capacity(PRP_PER_PAGE);
@@ -1239,7 +1239,7 @@ mod test {
     fn test_prp_multiple() {
         // Basic multiple-page prplist
         let (_pmap, acc_mem) = setup();
-        let memctx = acc_mem.access().unwrap();
+        let memctx = acc_mem.iaccess();
 
         let listaddrs = [0x80000u64, 0x81000u64];
         let mut prps: Vec<u64> = Vec::with_capacity(PRP_PER_PAGE);

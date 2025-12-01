@@ -7,7 +7,7 @@ use crate::prelude::*;
 use std::any::Any;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{Arc, Condvar, Weak};
+use std::sync::{Arc, Weak};
 use std::task::{Context, Poll, Waker};
 use std::thread;
 
@@ -177,7 +177,7 @@ impl TaskHdl {
         let cv = &self.0.cv;
         cv.notify_all();
         let mut guard =
-            cv.wait_while(guard, |g| g.should_hold && !g.should_exit).unwrap();
+            cv.wait_while(guard, |g| g.should_hold && !g.should_exit);
         guard.is_held = false;
     }
 
@@ -196,7 +196,7 @@ impl TaskHdl {
         let cv = &self.0.cv;
         cv.notify_all();
         let mut guard =
-            cv.wait_while(guard, |g| g.should_hold && !g.should_exit).unwrap();
+            cv.wait_while(guard, |g| g.should_hold && !g.should_exit);
         guard.is_held = false;
     }
 
@@ -331,12 +331,9 @@ impl TaskCtrl {
             Err(Error::ExitInProgress)
         } else {
             guard = inner.request_hold(guard, None);
-            guard = inner
-                .cv
-                .wait_while(guard, |g| {
-                    (!g.is_held && g.should_hold) && !g.should_exit
-                })
-                .unwrap();
+            guard = inner.cv.wait_while(guard, |g| {
+                (!g.is_held && g.should_hold) && !g.should_exit
+            });
             if guard.should_exit {
                 Err(Error::ExitInProgress)
             } else if !guard.should_hold {

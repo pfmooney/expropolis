@@ -23,7 +23,7 @@ use std::marker::PhantomPinned;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Condvar, Weak};
+use std::sync::{Arc, Weak};
 use std::task::{Context, Poll};
 
 use super::minder::{NoneInFlight, QueueMinder};
@@ -681,7 +681,7 @@ impl WorkerSlot {
 
             state.sleeping_on = Some(devid);
             probes::block_sleep!(|| { (devid.0, self.id as u64) });
-            state = self.cv.wait(state).unwrap();
+            state = self.cv.wait(state);
             probes::block_wake!(|| { (devid.0, self.id as u64) });
             state.sleeping_on = None;
         }

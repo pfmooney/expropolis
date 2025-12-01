@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use std::fmt::{self, Debug};
+use std::sync::Condvar as StdCondvar;
 use std::sync::Mutex as StdMutex;
 use std::sync::TryLockError;
 
@@ -80,5 +81,56 @@ impl<T: ?Sized + Debug> Debug for Mutex<T> {
 impl<T> From<T> for Mutex<T> {
     fn from(value: T) -> Self {
         Mutex::new(value)
+    }
+}
+
+/// Infallible wrapper for [std::sync::Condvar]
+#[repr(transparent)]
+pub struct Condvar(StdCondvar);
+
+impl Condvar {
+    /// Creates a new condition variable which is ready to be waited on and
+    /// notified.
+    pub fn new() -> Self {
+        Self(StdCondvar::new())
+    }
+
+    /// Infallible equivalent to [std::sync::Condvar::wait_while()]
+    ///
+    /// Will panic if the underlying Mutex becomes poisoned, but frees the
+    /// caller from having to check or unwrap() a [std::sync::LockResult].
+    pub fn wait_while<'a, T, F>(
+        &self,
+        guard: MutexGuard<'a, T>,
+        condition: F,
+    ) -> MutexGuard<'a, T>
+    where
+        F: FnMut(&mut T) -> bool,
+    {
+        if let Ok(guard) = self.0.wait_while(guard, condition) {
+            guard
+        } else {
+            panic!("poisoned mutex");
+        }
+    }
+
+    /// Infallible equivalent to [std::sync::Condvar::wait()]
+    ///
+    /// Will panic if the underlying Mutex becomes poisoned, but frees the
+    /// caller from having to check or unwrap() a [std::sync::LockResult].
+    pub fn wait<'a, T>(&self, guard: MutexGuard<'a, T>) -> MutexGuard<'a, T> {
+        if let Ok(guard) = self.0.wait(guard) {
+            guard
+        } else {
+            panic!("poisoned mutex");
+        }
+    }
+
+    pub fn notify_one(&self) {
+        self.0.notify_one()
+    }
+
+    pub fn notify_all(&self) {
+        self.0.notify_all()
     }
 }

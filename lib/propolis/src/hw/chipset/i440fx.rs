@@ -5,7 +5,7 @@
 use crate::prelude::*;
 
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::{Arc, };
+use std::sync::Arc;
 
 use crate::common::*;
 use crate::hw::bhyve::{

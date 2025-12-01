@@ -584,6 +584,19 @@ impl<T: AccessedResource> Accessor<T> {
         self.0.guard()
     }
 
+    /// Infallibly gain access to the underlying resource.
+    ///
+    /// Meant for use in tests in lieu of subsequent `unwrap()` calls.
+    ///
+    /// # Panics
+    ///
+    /// If any ancestor node disables access, or if the node is not attached to
+    /// a hierarchy containing a valid resource.
+    #[cfg(test)]
+    pub fn iaccess(&self) -> Guard<'_, T> {
+        self.0.guard().expect("resource available during tests")
+    }
+
     /// How many nodes exist in this Accessor hierarchy
     pub fn node_count(&self) -> usize {
         self.0.lock_tree(|guard| guard.node_count())

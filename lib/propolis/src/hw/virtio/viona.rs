@@ -10,7 +10,7 @@ use std::io::{self, Error, ErrorKind};
 use std::num::NonZeroU16;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, Condvar, Weak};
+use std::sync::{Arc, Weak};
 
 use crate::common::*;
 use crate::hw::pci;
@@ -832,7 +832,7 @@ struct PollerState {
 impl PollerState {
     fn wait_stopped(&self) {
         let guard = self.running.lock();
-        let _res = self.cv.wait_while(guard, |g| *g).unwrap();
+        let _res = self.cv.wait_while(guard, |g| *g);
     }
     fn set_stopped(&self) {
         let mut guard = self.running.lock();

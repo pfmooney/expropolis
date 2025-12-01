@@ -9,7 +9,7 @@ use std::io::{ErrorKind, Result};
 use std::num::NonZeroUsize;
 use std::os::unix::net::UnixListener as StdUnixListener;
 use std::path::Path;
-use std::sync::{Arc, Condvar};
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::chardev::{pollers, Sink, Source};

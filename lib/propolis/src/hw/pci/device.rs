@@ -4,7 +4,7 @@
 
 use crate::prelude::*;
 
-use std::sync::{Arc, Condvar};
+use std::sync::Arc;
 
 use super::bar::{BarDefine, Bars};
 use super::bits::*;
@@ -269,7 +269,7 @@ impl DeviceState {
         mut state: MutexGuard<State>,
         f: impl FnOnce(&mut State),
     ) -> MutexGuard<'_, State> {
-        state = self.cond.wait_while(state, |s| s.update_in_progress).unwrap();
+        state = self.cond.wait_while(state, |s| s.update_in_progress);
         f(&mut state);
         let next_mode = self.which_intr_mode(&state);
 

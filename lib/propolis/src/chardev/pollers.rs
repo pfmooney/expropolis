@@ -7,7 +7,7 @@ use crate::prelude::*;
 use std::collections::VecDeque;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::chardev::{BlockingSource, Sink, Source};
@@ -417,8 +417,7 @@ impl BlockingSourceBuffer {
                 // TODO: What guarantees do we want make about the poller
                 // vacating space in the buffer in a timely fashion?  This is
                 // particularly relevant during operations like quiesce.
-                inner =
-                    self.consume_cv.wait_while(inner, |i| i.is_full()).unwrap();
+                inner = self.consume_cv.wait_while(inner, |i| i.is_full());
             }
             let old_len = inner.buf.len();
             let copy_len =

@@ -574,7 +574,7 @@ impl Drop for SubQueue {
     fn drop(&mut self) {
         // Remove the CQ-SQ link
         let mut cq_sqs = self.cq.sqs.lock();
-        cq_sqs.remove(&self.id).unwrap();
+        cq_sqs.remove(&self.id).expect("SQ list holds entry for removal");
     }
 }
 
@@ -1285,7 +1285,7 @@ mod test {
                 hdl.clone(),
                 acc_mem(),
             )
-            .unwrap(),
+            .expect("CQ creation success"),
         );
         let io_cq = Arc::new(
             CompQueue::new(
@@ -1299,7 +1299,7 @@ mod test {
                 hdl,
                 acc_mem(),
             )
-            .unwrap(),
+            .expect("SQ creation success"),
         );
 
         // Admin queues must be less than 4K
@@ -1416,7 +1416,7 @@ mod test {
                 hdl,
                 acc_mem(),
             )
-            .unwrap(),
+            .expect("CQ creation success"),
         );
         let sq = Arc::new(
             SubQueue::new(
@@ -1429,7 +1429,7 @@ mod test {
                 cq.clone(),
                 acc_mem(),
             )
-            .unwrap(),
+            .expect("SQ creation success"),
         );
 
         // Replicate guest VM notifying us things were pushed to the SQ
@@ -1505,7 +1505,7 @@ mod test {
                 hdl,
                 acc_mem(),
             )
-            .unwrap(),
+            .expect("CQ creation success"),
         );
         let sq = Arc::new(
             SubQueue::new(
@@ -1518,7 +1518,7 @@ mod test {
                 cq.clone(),
                 acc_mem(),
             )
-            .unwrap(),
+            .expect("SQ creation success"),
         );
 
         // Replicate guest VM notifying us things were pushed to the SQ
@@ -1530,11 +1530,16 @@ mod test {
 
         // We should be able to pop based on how much space is in the CQ
         for _ in 0..cq.state.size - 1 {
-            let pop = sq.pop();
-            assert!(matches!(pop, Some(_)));
-
-            // Complete these in the CQ (but note guest won't have acknowledged them yet)
-            pop.unwrap().1.test_complete(&sq);
+            match sq.pop() {
+                Some(entry) => {
+                    // Complete these in the CQ (but note guest won't have
+                    // acknowledged them yet)
+                    entry.1.test_complete(&sq);
+                }
+                None => {
+                    panic!("expected SQ entry");
+                }
+            }
         }
 
         // But we can't pop anymore due to no more CQ space to reserve
@@ -1586,7 +1591,7 @@ mod test {
                 hdl,
                 acc_mem(),
             )
-            .unwrap(),
+            .expect("CQ creation success"),
         );
         let sq = Arc::new(
             SubQueue::new(
@@ -1599,7 +1604,7 @@ mod test {
                 cq.clone(),
                 acc_mem(),
             )
-            .unwrap(),
+            .expect("SQ creation success"),
         );
 
         // We'll be generating a random number of submissions
@@ -1728,15 +1733,18 @@ mod test {
         drop(doorbell_tx);
 
         // Wait for the completion handler and its count
-        let completions: u32 = comp_handler.join().unwrap();
+        let completions: u32 =
+            comp_handler.join().expect("CQ handler completes");
 
         // Wait for doorbell handler
-        doorbell_handler.join().unwrap();
+        doorbell_handler.join().expect("doorbell handler completes");
 
         // Wait for the IO workers to complete and sum the total
         // number of submissions they recevied
-        let submissions: u32 =
-            io_workers.into_iter().map(|j| j.join().unwrap()).sum();
+        let submissions: u32 = io_workers
+            .into_iter()
+            .map(|j| j.join().expect("IO worker completes"))
+            .sum();
 
         // Make sure the number of submission we recevied matched the number we
         // generated and completed

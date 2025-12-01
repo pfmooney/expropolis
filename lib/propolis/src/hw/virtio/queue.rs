@@ -9,7 +9,7 @@ use std::num::{NonZeroU16, Wrapping};
 use std::ops::Index;
 use std::slice::SliceIndex;
 use std::sync::atomic::{fence, AtomicBool, Ordering};
-use std::sync::{Arc};
+use std::sync::Arc;
 
 use super::bits::*;
 use super::probes;

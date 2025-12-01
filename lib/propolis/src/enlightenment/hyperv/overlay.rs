@@ -623,7 +623,7 @@ mod test {
         /// Writes the supplied `contents` to the supplied `pfn` in the
         /// context's guest memory.
         fn write_page(&self, pfn: Pfn, contents: &OverlayContents) {
-            let memctx = self.acc_mem.access().unwrap();
+            let memctx = self.acc_mem.iaccess();
             let mut mapping = MappedPfn::new(pfn, &memctx).unwrap();
             mapping.write_page(&contents);
         }
@@ -631,7 +631,7 @@ mod test {
         /// Asserts that page `pfn` of the context's memory is filled with
         /// the supplied `fill` bytes.
         fn assert_pfn_has_fill(&self, pfn: Pfn, fill: u8) {
-            let memctx = self.acc_mem.access().unwrap();
+            let memctx = self.acc_mem.iaccess();
             let mut mapping = MappedPfn::new(pfn, &memctx).unwrap();
             let mut contents = OverlayContents::default();
             mapping.read_page(&mut contents);

@@ -440,12 +440,12 @@ impl super::Enlightenment for HyperV {
 
     fn rdmsr(&self, vcpu: VcpuId, msr: MsrId) -> RdmsrOutcome {
         match msr.0 {
-            HV_X64_MSR_GUEST_OS_ID => RdmsrOutcome::Handled(
-                self.inner.lock().msr_guest_os_id_value,
-            ),
-            HV_X64_MSR_HYPERCALL => RdmsrOutcome::Handled(
-                self.inner.lock().msr_hypercall_value.0,
-            ),
+            HV_X64_MSR_GUEST_OS_ID => {
+                RdmsrOutcome::Handled(self.inner.lock().msr_guest_os_id_value)
+            }
+            HV_X64_MSR_HYPERCALL => {
+                RdmsrOutcome::Handled(self.inner.lock().msr_hypercall_value.0)
+            }
             HV_X64_MSR_VP_INDEX => {
                 let id: u32 = vcpu.into();
                 RdmsrOutcome::Handled(id as u64)

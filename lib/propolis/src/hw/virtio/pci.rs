@@ -7,7 +7,7 @@ use crate::prelude::*;
 use std::ffi::c_void;
 use std::num::NonZeroU16;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Weak};
+use std::sync::{Arc, Weak};
 
 use super::bits::*;
 use super::probes;
@@ -164,8 +164,7 @@ impl<D: PciVirtio + Send + Sync + 'static> pci::Device for D {
         if state.intr_mode != IntrMode::Msi {
             return;
         }
-        state =
-            vs.state_cv.wait_while(state, |s| s.intr_mode_updating).unwrap();
+        state = vs.state_cv.wait_while(state, |s| s.intr_mode_updating);
         state.intr_mode_updating = true;
 
         for vq in vs.queues.iter() {
@@ -406,8 +405,7 @@ impl PciVirtioState {
                     } else {
                         state = self
                             .state_cv
-                            .wait_while(state, |s| s.intr_mode_updating)
-                            .unwrap();
+                            .wait_while(state, |s| s.intr_mode_updating);
                         state.intr_mode_updating = true;
                         state.msix_queue_vec[sel] = val;
 
@@ -523,8 +521,7 @@ impl PciVirtioState {
             return;
         }
 
-        state =
-            self.state_cv.wait_while(state, |s| s.intr_mode_updating).unwrap();
+        state = self.state_cv.wait_while(state, |s| s.intr_mode_updating);
 
         state.intr_mode_updating = true;
         match old_mode {
