@@ -20,6 +20,7 @@ use tokio::sync::Notify;
 use crate::block::attachment::Bitmap;
 use crate::block::{self, devq_id, probes, Operation, Request};
 use crate::block::{DeviceId, MetricConsumer, QueueId, WorkerId};
+use crate::util::nodrop::NoDropMarker;
 
 /// Each emulated block device will have one or more [DeviceQueue]s which can be
 /// polled through [next_req()](DeviceQueue::next_req()) to emit IO requests.
@@ -70,11 +71,11 @@ pub struct DeviceRequest {
     req: Request,
     id: ReqId,
     source: Weak<QueueMinder>,
-    _nodrop: NoDropDevReq,
+    _nodrop: NoDropMarker,
 }
 impl DeviceRequest {
     fn new(id: ReqId, req: Request, source: Weak<QueueMinder>) -> Self {
-        Self { req, id, source, _nodrop: NoDropDevReq }
+        Self { req, id, source, _nodrop: NoDropMarker }
     }
 
     /// Get the underlying block [Request]
@@ -85,20 +86,11 @@ impl DeviceRequest {
     /// Issue a completion for this [Request].
     pub fn complete(self, result: super::Result) {
         let DeviceRequest { id, source, _nodrop, .. } = self;
-        std::mem::forget(_nodrop);
+        _nodrop.consume();
 
         if let Some(src) = source.upgrade() {
             src.complete(id, result);
         }
-    }
-}
-
-/// Marker struct to ensure that [DeviceRequest] consumers call
-/// [complete()](DeviceRequest::complete()), rather than silently dropping it.
-struct NoDropDevReq;
-impl Drop for NoDropDevReq {
-    fn drop(&mut self) {
-        panic!("DeviceRequest should be complete()-ed before drop");
     }
 }
 

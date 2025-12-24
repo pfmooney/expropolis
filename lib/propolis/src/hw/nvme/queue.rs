@@ -15,6 +15,7 @@ use crate::common::*;
 use crate::hw::nvme::DeviceId;
 use crate::hw::pci;
 use crate::migrate::MigrateStateError;
+use crate::util::nodrop::NoDropMarker;
 use crate::vmm::MemCtx;
 
 use thiserror::Error;
@@ -979,7 +980,7 @@ impl ProtoPermit {
             sq: self.sq,
             devsq_id: self.devsq_id,
             cid,
-            _nodrop: NoDropPermit,
+            _nodrop: NoDropMarker,
         }
     }
 
@@ -1013,14 +1014,14 @@ pub struct Permit {
     cid: u16,
 
     /// Marker to ensure holder calls [Permit::complete()].
-    _nodrop: NoDropPermit,
+    _nodrop: NoDropMarker,
 }
 
 impl Permit {
     /// Consume the permit by placing an entry into the Completion Queue.
     pub fn complete(self, comp: Completion) {
         let Permit { cq, sq, cid, _nodrop, .. } = self;
-        std::mem::forget(_nodrop);
+        _nodrop.consume();
 
         let cq = match cq.upgrade() {
             Some(cq) => cq,
@@ -1064,7 +1065,7 @@ impl Permit {
     /// ensure-this-permit-is-completed check in [`Drop`].
     pub fn abandon(self) {
         let Permit { _nodrop, .. } = self;
-        std::mem::forget(_nodrop);
+        _nodrop.consume();
     }
 
     /// Consume the permit by placing an entry into the Completion Queue.
@@ -1076,7 +1077,7 @@ impl Permit {
     #[cfg(test)]
     fn test_complete(self, sq: &SubQueue) {
         let Permit { cq, cid, _nodrop, .. } = self;
-        std::mem::forget(_nodrop);
+        _nodrop.consume();
 
         if let Some(cq) = cq.upgrade() {
             cq.push(Completion::success(), cid, sq);
@@ -1091,15 +1092,6 @@ impl Debug for Permit {
             .field("devsq_id", &self.devsq_id)
             .field("cid", &self.cid)
             .finish()
-    }
-}
-
-/// Marker struct to ensure that [Permit] consumers call
-/// [complete()](Permit::complete()), rather than silently dropping it.
-struct NoDropPermit;
-impl Drop for NoDropPermit {
-    fn drop(&mut self) {
-        panic!("Permit should be complete()-ed before drop");
     }
 }
 

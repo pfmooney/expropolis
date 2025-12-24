@@ -4,6 +4,7 @@
 
 pub mod aspace;
 pub mod id;
+pub mod nodrop;
 pub mod regmap;
 
 mod ioctl {
